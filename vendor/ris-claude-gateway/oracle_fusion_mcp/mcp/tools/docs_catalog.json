@@ -1,0 +1,47 @@
+{
+  "_comment": "Advisory candidate list for discovery suggestions ONLY. Explicitly NON-EXHAUSTIVE: absence from this file means nothing about tenant availability. Entries must never gate, authorize, or validate any operation; only live describe metadata does that. No attribute schemas, no required fields, no policy data — names and documentation links only.",
+  "doc_release": "26d",
+  "generated_at": "2026-10-06",
+  "sources": [
+    "https://docs.oracle.com/en/cloud/saas/applications-common/26d/farca/rest-endpoints.html",
+    "https://docs.oracle.com/en/cloud/saas/financials/26c/farfa/rest-endpoints.html"
+  ],
+  "entries": [
+    {
+      "resource": "setIdAssignmentsAssetBook",
+      "family": "fscm",
+      "path_template": "/fscmRestApi/resources/11.13.18.05/setIdAssignmentsAssetBook",
+      "methods": ["get", "post", "patch", "delete"],
+      "doc_url": "https://docs.oracle.com/en/cloud/saas/applications-common/26d/farca/rest-endpoints.html",
+      "doc_release": "26d",
+      "live_verified_tenants": ["iaehkf-dev1.fa.ocs.oraclecloud.com"]
+    },
+    {
+      "resource": "setIdAssignmentsAssetBookLOV",
+      "family": "fscm",
+      "path_template": "/fscmRestApi/resources/11.13.18.05/setIdAssignmentsAssetBookLOV",
+      "methods": ["get"],
+      "doc_url": "https://docs.oracle.com/en/cloud/saas/applications-common/26d/farca/rest-endpoints.html",
+      "doc_release": "26d",
+      "live_verified_tenants": []
+    },
+    {
+      "resource": "fixedAssetBooksLOV",
+      "family": "fscm",
+      "path_template": "/fscmRestApi/resources/11.13.18.05/fixedAssetBooksLOV",
+      "methods": ["get"],
+      "doc_url": "https://docs.oracle.com/en/cloud/saas/financials/26c/farfa/rest-endpoints.html",
+      "doc_release": "26c",
+      "live_verified_tenants": ["iaehkf-dev1.fa.ocs.oraclecloud.com"]
+    },
+    {
+      "resource": "fixedAssetCategoriesLOV",
+      "family": "fscm",
+      "path_template": "/fscmRestApi/resources/11.13.18.05/fixedAssetCategoriesLOV",
+      "methods": ["get"],
+      "doc_url": "https://docs.oracle.com/en/cloud/saas/financials/26c/farfa/rest-endpoints.html",
+      "doc_release": "26c",
+      "live_verified_tenants": []
+    }
+  ]
+}

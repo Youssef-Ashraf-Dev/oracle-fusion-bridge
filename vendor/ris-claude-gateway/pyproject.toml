@@ -1,0 +1,30 @@
+[project]
+name = "oracle-fusion-claude-plugin"
+version = "1.0.0"
+description = "Combined Oracle Fusion FSCM+HCM read-only research MCP for Claude Desktop (UV, 11.13.18.05) — 49 tools + Research Planner skill"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+# Union of mcp-oraclefusion 0.2.1 + fusion-hcm-mcp-server 0.1.1 Requires-Dist — no Anaconda bloat
+dependencies = [
+    "mcp>=1.2.0,<2",
+    "httpx>=0.28.1",
+    "pydantic>=2.13.0",
+    "pydantic-settings>=2.13.1",
+    "python-dotenv>=1.0",
+    "python-jose[cryptography]>=3.3",
+    "cryptography>=42.0",
+    "truststore>=0.9",
+    # keyring is optional for HCM desktop extra; listed for completeness but not required for stdio
+]
+
+
+[tool.uv]
+managed = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["oracle_fusion_mcp", "aj_fusion_hcm_mcp"]

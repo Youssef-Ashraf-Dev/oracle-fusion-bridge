@@ -1,0 +1,238 @@
+[
+ {
+  "name": "server_info",
+  "desc": "Report non-sensitive server configuration (combined)."
+ },
+ {
+  "name": "list_resources",
+  "desc": "Search Oracle Fusion HCM REST resources.\n\n        By default searches a bundled seed list "
+ },
+ {
+  "name": "describe_resource",
+  "desc": "Return a resource's live schema: attributes, children, actions, child_actions.\n\n        Hi"
+ },
+ {
+  "name": "get_capabilities",
+  "desc": "Report which HCM modules are live on this pod.\n\n        For each module: its mode (on/off/"
+ },
+ {
+  "name": "query_resource",
+  "desc": "Query any Oracle Fusion HCM resource (the generic read workhorse).\n\n        - ``q``: ADF f"
+ },
+ {
+  "name": "get_record",
+  "desc": "Fetch a single record by its key, optionally expanding child collections.\n\n        ``key``"
+ },
+ {
+  "name": "find_worker",
+  "desc": "Find a worker by exactly one of: name, email, or person number.\n\n        Name is a partial"
+ },
+ {
+  "name": "get_worker_profile",
+  "desc": "Return a worker's identity, contact, employment and (optionally) assignments."
+ },
+ {
+  "name": "list_direct_reports",
+  "desc": "List the direct reports of a worker (one level down)."
+ },
+ {
+  "name": "get_reporting_chain",
+  "desc": "Walk the management chain UP (to CEO) or DOWN (org beneath a person).\n\n        ``depth`` i"
+ },
+ {
+  "name": "lookup_org",
+  "desc": "Look up work-structure objects: department | location | job | position | grade."
+ },
+ {
+  "name": "get_current_compensation",
+  "desc": "Return salary history per assignment for a worker (amounts redacted by default)."
+ },
+ {
+  "name": "list_absences",
+  "desc": "List a worker's absences. Status/since are filtered client-side.\n\n        The ``absences``"
+ },
+ {
+  "name": "list_changes",
+  "desc": "List HCM change events from an ATOM feed since a timestamp.\n\n        ``feed`` is one of: n"
+ },
+ {
+  "name": "fusion_preview_hcm_absence_update",
+  "desc": "Dry-run preview of an HCM absence comments update (never executes).\n\n        Validates aga"
+ },
+ {
+  "name": "search_invoices",
+  "desc": "Search Accounts Payable invoices in Oracle Fusion. Examples: search_invoices({\"supplier\": "
+ },
+ {
+  "name": "get_invoice_details",
+  "desc": "Get full details for a single AP invoice by its numeric InvoiceId."
+ },
+ {
+  "name": "search_payments",
+  "desc": "Search Accounts Payable payments in Oracle Fusion."
+ },
+ {
+  "name": "get_payment_details",
+  "desc": "Get full details for a single AP payment by its numeric PaymentId."
+ },
+ {
+  "name": "list_payment_terms",
+  "desc": "List Accounts Payable payment terms defined in Oracle Fusion."
+ },
+ {
+  "name": "search_purchase_orders",
+  "desc": "Search purchase orders in Oracle Fusion Procurement."
+ },
+ {
+  "name": "get_po_details",
+  "desc": "Get full details for a single purchase order by its numeric POHeaderId, including lines."
+ },
+ {
+  "name": "search_suppliers",
+  "desc": "Search supplier master data in Oracle Fusion. Note: Status is not filterable via the Oracl"
+ },
+ {
+  "name": "get_supplier_details",
+  "desc": "Get full details for a single supplier by its numeric SupplierId, including sites, contact"
+ },
+ {
+  "name": "search_requisitions",
+  "desc": "Search purchase requisitions in Oracle Fusion."
+ },
+ {
+  "name": "search_receiving_receipts",
+  "desc": "Look up a goods receiving receipt by its receipt number. Receipt number is REQUIRED by the"
+ },
+ {
+  "name": "search_approved_suppliers",
+  "desc": "Search the approved supplier list in Oracle Fusion Procurement."
+ },
+ {
+  "name": "search_categories",
+  "desc": "Search procurement browsing categories in Oracle Fusion."
+ },
+ {
+  "name": "search_journal_batches",
+  "desc": "Search General Ledger journal batches in Oracle Fusion."
+ },
+ {
+  "name": "search_gl_balances",
+  "desc": "Get GL account balances. ALL parameters are REQUIRED by the Oracle API."
+ },
+ {
+  "name": "list_ledgers",
+  "desc": "List defined ledgers in Oracle Fusion General Ledger."
+ },
+ {
+  "name": "list_chart_of_accounts",
+  "desc": "List chart of accounts structures defined in Oracle Fusion."
+ },
+ {
+  "name": "search_currency_rates",
+  "desc": "Search daily currency exchange rates in Oracle Fusion."
+ },
+ {
+  "name": "search_ar_invoices",
+  "desc": "Search Accounts Receivable invoices (customer billing) in Oracle Fusion."
+ },
+ {
+  "name": "get_ar_invoice_details",
+  "desc": "Get full details for a single AR invoice by its numeric CustomerTransactionId."
+ },
+ {
+  "name": "search_receipts",
+  "desc": "Search AR receipts (customer payments received) in Oracle Fusion."
+ },
+ {
+  "name": "search_expense_reports",
+  "desc": "Search employee expense reports in Oracle Fusion. NOTE: May return 403 depending on servic"
+ },
+ {
+  "name": "search_user_accounts",
+  "desc": "Search HCM user accounts in Oracle Fusion by username or email."
+ },
+ {
+  "name": "test_oracle_connection",
+  "desc": "Test connectivity to Oracle Fusion REST API. Returns connection status and record counts. "
+ },
+ {
+  "name": "aggregate_records",
+  "desc": "Compute an aggregate (sum, avg, min, max, median, count, count_nonnull) over a numeric fie"
+ },
+ {
+  "name": "sumif_records",
+  "desc": "Conditional aggregation \u2014 like Excel SUMIF/COUNTIF/AVERAGEIF. Sum, count, or average a fie"
+ },
+ {
+  "name": "group_by_aggregate",
+  "desc": "Group records by a field and aggregate another field per group. Like a SQL GROUP BY or Exc"
+ },
+ {
+  "name": "lookup_record",
+  "desc": "Find a record by field value \u2014 like VLOOKUP/XLOOKUP. Returns the first match or all matche"
+ },
+ {
+  "name": "percentage_of_total",
+  "desc": "Calculate each record's or group's share of the total for a numeric field. Optionally grou"
+ },
+ {
+  "name": "safe_divide",
+  "desc": "Divide two numbers with exact Decimal arithmetic. Returns null on divide-by-zero instead o"
+ },
+ {
+  "name": "fusion_describe_resource",
+  "desc": "Describe an arbitrary FSCM REST resource using Oracle Fusion's /describe endpoint. Top-lev"
+ },
+ {
+  "name": "fusion_query_resource",
+  "desc": "Execute a generic READ-ONLY GET against an FSCM collection. Uses OracleClient._fetch and _"
+ },
+ {
+  "name": "fusion_get_resource_record",
+  "desc": "Retrieve one FSCM resource record by ID via GET {oracle_api_base}/{resource}/{record_id}. "
+ },
+ {
+  "name": "fusion_list_resources",
+  "desc": "List known FSCM REST resources validated via Oracle /describe endpoint. Curated seed from "
+ },
+ {
+  "name": "fusion_find_relationships",
+  "desc": "Find relationships for a source FSCM/HCM resource via Oracle /describe (primary keys, chil"
+ },
+ {
+  "name": "fusion_describe_actions",
+  "desc": "Describe available FSCM REST actions for a resource (read-only). GETs {resource}/describe "
+ },
+ {
+  "name": "preview_draft_po_submit",
+  "desc": "Dry-run preview of draft PO submit (read-only, never executes). Validates draftPurchaseOrd"
+ },
+ {
+  "name": "fusion_preview_controlled_action",
+  "desc": "Dry-run preview of a Fusion item action (read-only, never executes). Routed through the dy"
+ },
+ {
+  "name": "fusion_preview_write",
+  "desc": "Prepare a dynamic Fusion write preview; NEVER performs the mutation. Use when the user req"
+ },
+ {
+  "name": "fusion_create_requirements",
+  "desc": "Read-only: list the exact caller-supplied fields required to create a resource (never exec"
+ },
+ {
+  "name": "fusion_operation_inventory",
+  "desc": "Read-only: inventory what CAN be done with a resource, resolved from live describe metadat"
+ },
+ {
+  "name": "fusion_preview_batch",
+  "desc": "Read-only: validate a LIST of write operations and mint ONE batch confirmation for all of "
+ },
+ {
+  "name": "fusion_execute_confirmed_batch",
+  "desc": "Execute exactly ONE previously previewed and explicitly authorized batch. Accepts ONLY a b"
+ },
+ {
+  "name": "fusion_execute_confirmed_write",
+  "desc": "Execute exactly ONE previously previewed and explicitly authorized Fusion mutation. Accept"
+ }
+]

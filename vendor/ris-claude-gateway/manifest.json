@@ -1,0 +1,152 @@
+{
+  "manifest_version": "0.4",
+  "name": "ris-claude-gateway",
+  "display_name": "RIS Claude Gateway",
+  "version": "1.21.0",
+  "description": "Unified Oracle Fusion research and controlled-mutation MCP for FSCM and HCM, extending the original capabilities with dynamic resource discovery, live schema inspection, relationship discovery, generic resource querying, cross-module research capabilities, and the Fusion Research Planner skill. Provides 59 tools (38 FSCM read-only + 14 HCM read-only + 6 preview-gated write-workflow tools + server_info) through a single stdio server: read-only research operations plus a preview -> explicit user confirmation -> exactly-once execution workflow for controlled mutations (no raw write tools are registered, and MCP_MODE=readonly is enforced).",
+  "long_description": "Unified Oracle Fusion research and development package that unifies FSCM and HCM capabilities into a single local MCP server. In addition to the underlying Procurement and HCM functionality, this version introduces expanded discovery and research capabilities, including dynamic resource discovery, live schema and queryability inspection, relationship analysis, generic resource querying, cross-module FSCM/HCM investigation, and structured research through the Fusion Research Planner skill. The skill guides Claude through a systematic discovery -> schema inspection -> relationship analysis -> query planning -> validation workflow, helping reduce assumptions and improve the reliability of Oracle Fusion research, and extends the same discipline to changes: contextual action suggestions, mutation previews, explicit per-operation confirmation, exactly-once execution, and independent verification (VERIFIED / ACKNOWLEDGED_UNVERIFIED / FAILED / INDETERMINATE). The package provides 59 tools (38 FSCM read-only + 14 HCM read-only + 6 preview-gated write-workflow tools + server_info), uses MCP_MODE=readonly, registers no raw write tools (all controlled mutations flow through the preview-and-confirm workflow), and includes curated cross-module relationship metadata. UV is used to provision the required Python runtime and dependencies automatically.",
+  "author": {
+    "name": "RIS - Solutions"
+  },
+  "license": "MIT",
+  "keywords": [
+    "oracle",
+    "fusion",
+    "fscm",
+    "hcm",
+    "erp",
+    "research",
+    "mcp",
+    "claude-desktop",
+    "read-only",
+    "uv"
+  ],
+  "server": {
+    "type": "uv",
+    "entry_point": "server.py",
+    "mcp_config": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "${__dirname}",
+        "server.py"
+      ],
+      "env": {
+        "ORACLE_FUSION_BASE_URL": "${user_config.oracle_fusion_base_url}",
+        "ORACLE_USERNAME": "${user_config.oracle_username}",
+        "ORACLE_PASSWORD": "${user_config.oracle_password}",
+        "ORACLE_FUSION_API_VERSION": "${user_config.oracle_fusion_api_version}",
+        "HCM_BASE_URL": "${user_config.oracle_fusion_base_url}",
+        "HCM_USERNAME": "${user_config.oracle_username}",
+        "HCM_PASSWORD": "${user_config.oracle_password}",
+        "HCM_REST_VERSION": "${user_config.oracle_fusion_api_version}",
+        "MCP_MODE": "readonly"
+      },
+      "platform_overrides": {
+        "win32": {
+          "command": "uv",
+          "args": [
+            "run",
+            "--directory",
+            "${__dirname}",
+            "server.py"
+          ],
+          "env": {
+            "ORACLE_FUSION_BASE_URL": "${user_config.oracle_fusion_base_url}",
+            "ORACLE_USERNAME": "${user_config.oracle_username}",
+            "ORACLE_PASSWORD": "${user_config.oracle_password}",
+            "ORACLE_FUSION_API_VERSION": "${user_config.oracle_fusion_api_version}",
+            "HCM_BASE_URL": "${user_config.oracle_fusion_base_url}",
+            "HCM_USERNAME": "${user_config.oracle_username}",
+            "HCM_PASSWORD": "${user_config.oracle_password}",
+            "HCM_REST_VERSION": "${user_config.oracle_fusion_api_version}",
+            "MCP_MODE": "readonly"
+          }
+        },
+        "darwin": {
+          "command": "uv",
+          "args": [
+            "run",
+            "--directory",
+            "${__dirname}",
+            "server.py"
+          ],
+          "env": {
+            "ORACLE_FUSION_BASE_URL": "${user_config.oracle_fusion_base_url}",
+            "ORACLE_USERNAME": "${user_config.oracle_username}",
+            "ORACLE_PASSWORD": "${user_config.oracle_password}",
+            "ORACLE_FUSION_API_VERSION": "${user_config.oracle_fusion_api_version}",
+            "HCM_BASE_URL": "${user_config.oracle_fusion_base_url}",
+            "HCM_USERNAME": "${user_config.oracle_username}",
+            "HCM_PASSWORD": "${user_config.oracle_password}",
+            "HCM_REST_VERSION": "${user_config.oracle_fusion_api_version}",
+            "MCP_MODE": "readonly"
+          }
+        },
+        "linux": {
+          "command": "uv",
+          "args": [
+            "run",
+            "--directory",
+            "${__dirname}",
+            "server.py"
+          ],
+          "env": {
+            "ORACLE_FUSION_BASE_URL": "${user_config.oracle_fusion_base_url}",
+            "ORACLE_USERNAME": "${user_config.oracle_username}",
+            "ORACLE_PASSWORD": "${user_config.oracle_password}",
+            "ORACLE_FUSION_API_VERSION": "${user_config.oracle_fusion_api_version}",
+            "HCM_BASE_URL": "${user_config.oracle_fusion_base_url}",
+            "HCM_USERNAME": "${user_config.oracle_username}",
+            "HCM_PASSWORD": "${user_config.oracle_password}",
+            "HCM_REST_VERSION": "${user_config.oracle_fusion_api_version}",
+            "MCP_MODE": "readonly"
+          }
+        }
+      }
+    }
+  },
+  "user_config": {
+    "oracle_fusion_base_url": {
+      "type": "string",
+      "title": "Oracle Fusion Base URL",
+      "description": "Base URL of your Oracle Fusion pod, e.g. https://iaehkf-dev1.fa.ocs.oraclecloud.com (no trailing slash, no /fscmRestApi or /hcmRestApi). The MCP appends /fscmRestApi and /hcmRestApi + /resources/11.13.18.05 at runtime. Shared by FSCM and HCM (single pod).",
+      "required": true,
+      "sensitive": false
+    },
+    "oracle_username": {
+      "type": "string",
+      "title": "Oracle Username",
+      "description": "Oracle Fusion username (e.g. your.name@example.com). Shared by FSCM and HCM; if you use JWT, still set this as the token subject.",
+      "required": true,
+      "sensitive": false
+    },
+    "oracle_password": {
+      "type": "string",
+      "title": "Oracle Password",
+      "description": "Oracle Fusion password for Basic Auth (shared FSCM+HCM). Leave blank only if using Oracle JWT (ORACLE_JWT_*). Never hard-coded \u2014 stored only in Claude Desktop\u2019s secure storage and OS keychain.",
+      "required": true,
+      "sensitive": true
+    },
+    "oracle_fusion_api_version": {
+      "type": "string",
+      "title": "Oracle Fusion API Version",
+      "description": "REST API version suffix for both FSCM and HCM. Default 11.13.18.05 matches the currently-validated pod. Do not change unless your pod differs.",
+      "required": false,
+      "default": "11.13.18.05",
+      "sensitive": false
+    }
+  },
+  "compatibility": {
+    "platforms": [
+      "win32",
+      "darwin",
+      "linux"
+    ],
+    "runtimes": {
+      "python": ">=3.11"
+    }
+  },
+  "icon": "icon.png"
+}

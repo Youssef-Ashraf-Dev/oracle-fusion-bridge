@@ -1,0 +1,8 @@
+# One service. The host opens no port: Telegram is reached by long polling.
+services:
+  bridge:
+    build: .
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
