@@ -36,6 +36,29 @@ DATA = frozenset({
     "list_direct_reports", "get_reporting_chain", "lookup_org", "list_absences", "list_changes",
 })
 
+# Only these tools take a `resource` argument. A plan step's resource scopes calls to them and nothing else:
+# typed tools (search_invoices, ...) have no resource dimension, whatever the plan says.
+GENERIC_READERS = frozenset({"fusion_query_resource", "fusion_get_resource_record", "query_resource", "get_record"})
+
+# Resources the generic readers could reach that hold pay, bank, identity or credential data. The typed tools for these are
+# already denied by name; this closes the same door for query_resource and friends. Substring match, case-insensitive.
+SENSITIVE_RESOURCE_PARTS = ("salar", "compensation", "payroll", "bankaccount", "paymentmethod", "useraccount",
+                            "nationalidentifier", "personalidentifier", "password", "credential")
+
+
+def touches_sensitive_resource(tool_input: dict) -> str:
+    """The first resource, child or expand value in a generic-reader call that names pay or identity data, else ''."""
+    values: list = []
+    for key in ("resource", "child", "expand"):
+        v = tool_input.get(key)
+        values += v if isinstance(v, (list, tuple)) else ([v] if v else [])
+    for v in values:
+        for part in str(v).lower().replace("_", "").replace("-", "").replace("/", " ").replace(",", " ").split():
+            if any(bad in part for bad in SENSITIVE_RESOURCE_PARTS):
+                return str(v)
+    return ""
+
+
 # Personal or pay data. Data tools, but denied unless ALLOW_HCM_SENSITIVE=true.
 SENSITIVE = frozenset({
     "find_worker", "get_worker_profile", "get_current_compensation", "search_user_accounts",

@@ -61,6 +61,8 @@ def parse_plan(raw: dict[str, Any], allow_sensitive: bool = False) -> Plan:
         if verdict.verdict == "allow":
             raise PlanError(f"step {i}: {tool} needs no approval, leave it out of the plan")
         res = s.get("resource")
+        if tool in P.GENERIC_READERS and not allow_sensitive and P.touches_sensitive_resource({"resource": res}):
+            raise PlanError(f"step {i}: {res} holds pay or identity data, which is not available")
         steps.append(Step(tool=tool, resource=_norm(res) if res else None,
                           note=str(s.get("note", ""))[:200]))
     return Plan(summary=summary, steps=steps)
@@ -82,14 +84,17 @@ class PlanState:
         if self.data_calls >= MAX_DATA_CALLS:
             return False, f"data call limit ({MAX_DATA_CALLS}) reached for this run"
         name = P.bare(tool_name)
+        scoped = name in P.GENERIC_READERS              # only generic readers are limited to a named resource
         res = tool_input.get("resource")
         res = _norm(res) if res else None
-        for plan in self.approved:
-            for st in plan.steps:
-                if st.tool != name:
-                    continue
-                if st.resource is None or st.resource == res:
-                    return True, ""
+        same_tool = [st for plan in self.approved for st in plan.steps if st.tool == name]
+        for st in same_tool:
+            if not scoped or st.resource is None or st.resource == res:
+                return True, ""
+        if same_tool:                                   # the tool is in the plan, but for another resource
+            allowed = ", ".join(sorted({st.resource or "any resource" for st in same_tool}))
+            return False, (f"{name} on {res or 'no resource'} does not match the approved plan, which allows it on "
+                           f"{allowed}; propose a new plan that names the resource you need")
         where = f" on {res}" if res else ""
         return False, f"{name}{where} is not in the approved plan; propose a new plan covering it"
 

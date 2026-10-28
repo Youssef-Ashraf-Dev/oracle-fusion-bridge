@@ -36,6 +36,13 @@ def test_config_failures(change, name, status):
     assert by(check_config(dataclasses.replace(GOOD, **change)))[name].status == status
 
 
+def test_placeholder_pod_url_is_a_failure_with_a_plain_explanation():
+    c = by(check_config(dataclasses.replace(GOOD, oracle_base_url="https://YOUR-NONPROD-POD.fa.ocs.oraclecloud.com")))
+    assert c["Pod URL is still the placeholder"].status == FAIL and ".env.example" in c["Pod URL is still the placeholder"].detail
+    assert "Pod URL is still the placeholder" not in by(check_config(GOOD))
+    assert "from " in by(check_config(GOOD))["Pod host (must be NON-PRODUCTION)"].detail           # the source is shown
+
+
 def test_runtime_checks_need_uv():
     assert by(check_runtime(lambda n: None))["uv on PATH (launches the MCP)"].status == FAIL
     assert by(check_runtime(lambda n: "/bin/uv"))["uv on PATH (launches the MCP)"].status == PASS
@@ -48,7 +55,7 @@ def models(*ids):
 def test_anthropic_key_and_model_checks():
     m = GOOD.model
     name = f"Model {m} is available"
-    ok = by(check_anthropic(GOOD, lambda u, h: models(m, "claude-sonnet-5-5")))
+    ok = by(check_anthropic(GOOD, lambda u, h: models(m, "claude-haiku-5-0")))
     assert ok["Anthropic API key"].status == PASS and ok[name].status == PASS
     missing = by(check_anthropic(GOOD, lambda u, h: models("some-other-model")))
     assert missing[name].status == FAIL and "some-other-model" in missing[name].detail

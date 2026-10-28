@@ -57,3 +57,13 @@ def test_sdk_preapproved_list_has_no_data_or_write_tools():
     pre = set(P.sdk_allowed_tools())
     for t in P.DATA | P.SENSITIVE | P.WRITE_WORKFLOW | P.UNUSED:
         assert P.PREFIX + t not in pre
+
+
+@pytest.mark.parametrize("call,hit", [
+    ({"resource": "salaries"}, "salaries"), ({"resource": "Salaries/"}, "Salaries/"), ({"resource": "individualCompensations"}, "individualCompensations"),
+    ({"resource": "workers", "expand": ["salaries"]}, "salaries"), ({"resource": "workers", "expand": "assignments,userAccounts"}, "assignments,userAccounts"),
+    ({"resource": "payrollRelationships"}, "payrollRelationships"), ({"resource": "workers", "child": "bank_accounts"}, "bank_accounts"),
+    ({"resource": "workers"}, ""), ({"resource": "absences"}, ""), ({"resource": "invoices", "expand": "lines"}, ""), ({}, ""),
+])
+def test_generic_readers_cannot_reach_pay_or_identity_resources(call, hit):
+    assert P.touches_sensitive_resource(call) == hit

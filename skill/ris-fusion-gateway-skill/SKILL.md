@@ -1,6 +1,6 @@
 ---
-name: "ris-fusion-gateway-skill"
-description: "Use whenever the task involves Oracle Fusion FSCM/HCM or any Fusion MCP fusion_* tool (fusion_list_resources, fusion_describe_resource, fusion_find_relationships, fusion_query_resource, fusion_get_resource_record, fusion_describe_actions, fusion_operation_inventory, fusion_create_requirements, fusion_preview_write, fusion_execute_confirmed_write). This skill is the required planning and reasoning layer for all Fusion MCP interactions: live resource/schema/relationship discovery, safe query planning, action discovery, contextual action suggestions, mutation preview planning, explicit-confirmation discipline, and verification-outcome interpretation."
+name: RIS_Fusion_Gateway-Skill
+description: Use whenever the task involves Oracle Fusion FSCM/HCM or any Fusion MCP fusion_* tool (fusion_list_resources, fusion_describe_resource, fusion_find_relationships, fusion_query_resource, fusion_get_resource_record, fusion_describe_actions, fusion_operation_inventory, fusion_create_requirements, fusion_preview_write, fusion_execute_confirmed_write). This skill is the required planning and reasoning layer for all Fusion MCP interactions: live resource/schema/relationship discovery, safe query planning, action discovery, contextual action suggestions, mutation preview planning, explicit-confirmation discipline, and verification-outcome interpretation.
 ---
 
 # Fusion Research & Action Planner

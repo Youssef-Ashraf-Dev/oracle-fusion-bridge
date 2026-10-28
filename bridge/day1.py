@@ -1,6 +1,6 @@
 """Day 1 spike: run representative questions through the live pipeline and measure what they cost.
 
-A variant is model/skill-mode, for example haiku/native (the target) or sonnet/native (a reference).
+A variant is model/skill-mode, for example haiku/native. Only Haiku is used by default.
 
 Nothing here talks to Telegram. It uses the same LiveRunner, policy and plan gate as the bot, so what it
 measures is what the bot will do.
@@ -108,9 +108,30 @@ class RecordingApprover:
         return True
 
 
+# ---- the approval prompt ---------------------------------------------------------------
+
+def parse_yes_no(answer: str) -> Optional[bool]:
+    """y/yes -> True; n/no/empty -> False; anything else (pasted text, a typo) -> None, meaning ask again."""
+    a = answer.strip().lower()
+    if a in ("y", "yes"):
+        return True
+    if a in ("", "n", "no"):
+        return False
+    return None
+
+
+async def ask_yes_no(read: Callable[[str], Awaitable[str]], prompt: str, say: Callable[[str], None] = print) -> bool:
+    """Keep asking until the answer is clearly yes or no, so a pasted question cannot silently count as a denial."""
+    while True:
+        verdict = parse_yes_no(await read(prompt))
+        if verdict is not None:
+            return verdict
+        say("Please type y or n.")
+
+
 # ---- running --------------------------------------------------------------------------
 
-MODEL_ALIASES = {"haiku": "claude-haiku-5-5", "sonnet": "claude-sonnet-5-5"}
+MODEL_ALIASES = {"haiku": "claude-haiku-5-5"}          # any other model must be given by its full id
 MODES = ("native", "inline", "none")
 
 
@@ -138,9 +159,9 @@ def variant_settings(base: Settings, label: str) -> Settings:
 
 
 def default_variants(base: Settings) -> list[str]:
-    """The target model and a reference model, each with the skill loaded the way chat does it."""
+    """Haiku, with the skill loaded the way chat does it (or without it when no skill file is configured)."""
     mode = "native" if has_skill(base) else "none"
-    return [f"haiku/{mode}", f"sonnet/{mode}"]
+    return [f"haiku/{mode}"]
 
 
 async def run_spike(base: Settings, db: Database, questions: Iterable[Question], variants: list[str],

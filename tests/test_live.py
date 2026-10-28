@@ -74,6 +74,62 @@ async def test_happy_path_plan_then_data_then_answer(tmp_path, settings):
     await db.close()
 
 
+async def test_the_first_real_run_scenario_now_reaches_the_data_call(tmp_path, settings):
+    """A typed tool, a plan step that names a resource, no resource in the call: this was refused three times."""
+    log = {}
+    async def script(c):
+        await runner.last_ctx.propose_query_plan({"summary": "10 latest invoices", "steps": [
+            {"tool": "search_invoices", "resource": "invoices", "note": "limit=10"}]})
+        log["call"] = await c.options.can_use_tool(P.PREFIX + "search_invoices", {"date_to": "2026-10-28", "limit": 10, "offset": 0}, None)
+        yield result(text="Here are the invoices.")
+    db, runner, _ = await make(tmp_path, settings, yes, script)
+    res = await runner.run(7, "latest invoices")
+    assert log["call"].behavior == "allow" and res.data_calls == 1 and res.status == "ok"
+    await db.close()
+
+
+async def test_reported_duration_excludes_the_wait_for_the_tap(tmp_path, settings):
+    async def slow_yes(plan):
+        await asyncio.sleep(0.6)
+        return True
+    async def script(c):
+        await runner.last_ctx.propose_query_plan({"summary": "x", "steps": [{"tool": "search_invoices"}]})
+        yield result(text="Done.")
+    db, runner, _ = await make(tmp_path, settings, slow_yes, script)
+    res = await runner.run(7, "q")
+    assert res.duration_s < 0.4                                    # the 0.6 s wait is not counted as working time
+    await db.close()
+
+
+async def _pay_data_scenario(tmp_path, settings, name):
+    log, current = {}, {}
+    async def script(c):
+        await current["r"].last_ctx.propose_query_plan({"summary": "worker names", "steps": [{"tool": "query_resource", "resource": "workers"}]})
+        log["ok"] = await c.options.can_use_tool(P.PREFIX + "query_resource", {"resource": "workers", "fields": ["DisplayName"]}, None)
+        log["expand"] = await c.options.can_use_tool(P.PREFIX + "query_resource", {"resource": "workers", "expand": ["salaries"]}, None)
+        log["direct"] = await c.options.can_use_tool(P.PREFIX + "query_resource", {"resource": "salaries"}, None)
+        yield result(text="Done.")
+    db = await Database(tmp_path / f"{name}.db").open()
+    runner = LiveRunner(settings, db, yes, lambda opts: FakeSDK(opts, script), tick_s=0.02)
+    current["r"] = runner
+    await runner.run(7, "names")
+    await db.close()
+    return log
+
+
+async def test_expand_or_child_cannot_smuggle_pay_data_past_an_approved_plan(tmp_path, settings):
+    log = await _pay_data_scenario(tmp_path, settings, "default")
+    assert log["ok"].behavior == "allow"
+    assert log["expand"].behavior == "deny" and "pay or identity" in log["expand"].message
+    assert log["direct"].behavior == "deny" and "pay or identity" in log["direct"].message
+
+
+async def test_the_sensitive_switch_lifts_the_resource_block_but_not_the_plan_scope(tmp_path, settings):
+    log = await _pay_data_scenario(tmp_path, dataclasses.replace(settings, allow_hcm_sensitive=True), "sensitive")
+    assert log["ok"].behavior == "allow" and log["expand"].behavior == "allow"          # expand is not scoped by the plan
+    assert log["direct"].behavior == "deny" and "pay or identity" not in log["direct"].message   # salaries is not in the plan
+
+
 async def test_denied_plan_stops_everything(tmp_path, settings):
     log = {}
     async def script(c):
@@ -271,7 +327,9 @@ def test_planner_skill_modes_in_the_prompt(tmp_path):
 
 
 def test_prompt_states_the_rules_the_cheat_sheet_calls_for():
-    for needle in ("propose_query_plan", "isError", "fields and a limit", "compute tools", "plain text", "cannot change anything"):
+    for needle in ("propose_query_plan", "isError", "fields and a limit", "compute tools", "plain text", "cannot change anything",
+                   "typed tools take none", "needs no describe", "Plan once and plan generously", "finance and",
+                   "combine conditions"):
         assert needle in BRIDGE_RULES
 
 

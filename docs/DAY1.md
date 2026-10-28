@@ -1,6 +1,8 @@
 # Day 1 runbook: the live spike
 
-Goal: before any Telegram work, learn what a question costs and whether the answers match what Claude chat gives with this MCP. Everything runs from a terminal, through the same policy, plan gate and Agent SDK session the bot will use.
+Goal: before any Telegram work, learn what a question costs and whether the answers match what Claude chat gives
+with this MCP. Everything runs from a terminal, through the same policy, plan gate and Agent SDK session the bot
+will use.
 
 ## What the bridge reproduces from Claude chat
 
@@ -32,20 +34,30 @@ The MCP was built for chat. Chat supplies things the MCP takes for granted; the 
 2. **Configure.** Copy `.env.example` to `.env` and fill in the pod, the Fusion user, the API key and
    `ORACLE_ALLOWED_BASE_URLS` (a distinctive part of the pod host). The scripts read `.env` themselves.
 3. **Preflight, no model credit spent.** `python scripts/day1_preflight.py`
-   Expect every line PASS, plus a WARN asking you to confirm the host is non-production. It checks the key and model name with a free call, starts the MCP as the bot does, tests the Fusion login, and then starts the Claude Code engine with the bridge's exact options and a deliberately invalid key to prove the setup: both MCP servers connect, the model is offered the 59 Fusion tools plus the Skill tool and nothing else, and the skill is found.
-4. **Make the questions real.** Edit `scripts/day1_questions.txt` so each line has a true answer on your pod (supplier names, person numbers, periods). Keep the two `[refuse]` lines.
+   Expect every line PASS, plus a WARN asking you to confirm the host is non-production. It checks the key and model
+   name with a free call, starts the MCP as the bot does, tests the Fusion login, and then starts the Claude Code
+   engine with the bridge's exact options and a deliberately invalid key to prove the setup: both MCP servers
+   connect, the model is offered the 59 Fusion tools plus the Skill tool and nothing else, and the skill is found.
+4. **Make the questions real.** Edit `scripts/day1_questions.txt` so each line has a true answer on your pod
+   (supplier names, person numbers, periods). Keep the two `[refuse]` lines.
 5. **One question by hand.** `python scripts/day1_spike.py --runs haiku/native --approve ask --only 3`
-Read the plan the agent proposes, approve it, and read the answer. Check the *tools* list in the result: the first call should be the Skill tool loading the planner skill.
+   Read the plan the agent proposes, approve it, and read the answer. Check the *tools* list in the result: the
+   first call should be the Skill tool loading the planner skill.
 6. **The full run.** `python scripts/day1_spike.py`
-   By default this runs every question with Haiku and with Sonnet, both loading the skill natively, so you compare the target model with a reference. To see how the skill should reach the model, add `--runs haiku/native,haiku/inline,haiku/none`. Use `--effort low|medium|high` to trade cost for care. Plans are auto-approved and printed; `--approve ask` approves them yourself. Each run stops at the per-run cap.
-7. **Grade.** Open `data/day1/day1_results.md`, fill the *Quality 0-2* column, compare the variants, and pick the model, the skill mode and the per-run cap (start from *Suggested cap*, then set `RUN_BUDGET_USD`).
+   By default this runs every question with Haiku, loading the skill natively as chat does. To compare how the skill
+   should reach the model, add `--runs haiku/native,haiku/inline,haiku/none`. Use `--effort low|medium|high` to trade
+   cost for care. Plans are auto-approved and printed; `--approve ask` approves them yourself. Each run stops at the
+   per-run cap.
+7. **Grade.** Open `data/day1/day1_results.md`, fill the *Quality 0-2* column, compare the variants (if you ran
+   more than one), and pick the skill mode and the per-run cap (start from *Suggested cap*, then set `RUN_BUDGET_USD`).
 
-Cost of the default run: 10 questions x 2 variants = 20 runs. Per-question costs are unmeasured; a few percent of the $240 monthly credit is the expected order. A sample report is in `docs/SAMPLE_day1_results.md` (invented numbers).
+Cost of the default run: 10 questions with one variant = 10 runs. Per-question costs are unmeasured; a few percent of
+the $240 monthly credit is the expected order. A sample report is in `docs/SAMPLE_day1_results.md` (invented numbers).
 
 ## The Day 1 gate
 
-- [ ] Cost per question measured per variant, and the per-run cap chosen.
-- [ ] A model chosen: Haiku is accepted only if no answerable question scores Quality 0 and plans stay tight.
+- [ ] Cost per question measured, and the per-run cap chosen.
+- [ ] Haiku accepted: no answerable question scores Quality 0, and plans stay tight (one or two plans per question).
 - [ ] A skill mode chosen (native, inline or none) from the comparison.
 - [ ] Answers accepted for phone reading: short, plain text, pod and as-of line present.
 - [ ] Both decline-type questions were declined and no data was read for them.
@@ -53,7 +65,8 @@ Cost of the default run: 10 questions x 2 variants = 20 runs. Per-question costs
 
 ## What to bring back
 
-The Summary table and your Quality scores. The full `.md` contains data read from the pod, so share it only if the data owner agrees.
+The Summary table and your Quality scores. The full `.md` contains data read from the pod, so share it only if the
+data owner agrees.
 
 ## Preflight failures
 

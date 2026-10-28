@@ -16,7 +16,7 @@ class Settings:
     anthropic_api_key: str = ""
     telegram_token: str = ""
 
-    model: str = "claude-haiku-5-5"              # one model plans and answers; Day 1 compares with Sonnet
+    model: str = "claude-haiku-5-5"              # one model plans and answers
     effort: Optional[str] = None                  # low | medium | high | xhigh | max; None = the engine's default
 
     mcp_dir: Path = Path("./vendor/ris-claude-gateway")
@@ -41,6 +41,8 @@ class Settings:
     user_daily_runs: int = 25
     allow_hcm_sensitive: bool = False
 
+    demo_mode: bool = False                       # a canned agent: test Telegram with no Oracle and no model
+
     max_concurrent_runs: int = 2
     compute_timeout_s: int = 180
     approval_timeout_s: int = 120
@@ -58,20 +60,16 @@ class Settings:
     @property
     def live_ready(self) -> bool:
         """The vendor MCP exits at startup without a pod URL and credentials, so /ask needs all three."""
-        return bool(self.oracle_base_url and self.oracle_user and self.oracle_password)
+        return self.demo_mode or bool(self.oracle_base_url and self.oracle_user and self.oracle_password)
 
 
-def load_env_file(path: str | Path = ".env") -> int:
-    """Read KEY=VALUE lines into the environment without overriding values already set. Returns how many were added.
+_FILE_KEYS: dict[str, int] = {}          # setting name -> the .env line it was read from, for the settings the file supplied
 
-    A tiny loader so Windows users need no shell exports: comments and blank lines are skipped and one pair of
-    surrounding quotes is removed. Real environment variables always win.
-    """
-    p = Path(path)
-    if not p.is_file():
-        return 0
-    added = 0
-    for raw in p.read_text(encoding="utf-8").splitlines():
+
+def _parse_env_file(path: Path) -> list[tuple[int, str, str]]:
+    """(line number, key, value) for every KEY=VALUE line, in file order."""
+    out: list[tuple[int, str, str]] = []
+    for n, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         line = raw.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
@@ -81,10 +79,57 @@ def load_env_file(path: str | Path = ".env") -> int:
             val = val[1:-1]
         elif " #" in val:                                  # trailing comment on an unquoted value
             val = val.split(" #", 1)[0].rstrip()
-        if key and key not in os.environ:
+        if key:
+            out.append((n, key, val))
+    return out
+
+
+def load_env_file(path: str | Path = ".env") -> int:
+    """Read KEY=VALUE lines into the environment without overriding values already set. Returns how many were added.
+
+    A tiny loader so Windows users need no shell exports. Real environment variables always win, and when a key
+    appears twice in the file the FIRST line wins. `origin()` and `env_conflicts()` report what actually happened.
+    """
+    p = Path(path)
+    if not p.is_file():
+        return 0
+    added = 0
+    for n, key, val in _parse_env_file(p):
+        if key not in os.environ:
             os.environ[key] = val
+            _FILE_KEYS[key] = n
             added += 1
     return added
+
+
+def origin(name: str) -> str:
+    """Where the value in use for `name` came from."""
+    if name in _FILE_KEYS:
+        return f".env line {_FILE_KEYS[name]}"
+    if name in os.environ:
+        return "your shell environment (it overrides .env)"
+    return "not set"
+
+
+def env_conflicts(path: str | Path = ".env", names: tuple[str, ...] = ()) -> list[str]:
+    """Plain-language warnings about settings that are not what the .env file appears to say."""
+    p = Path(path)
+    if not p.is_file():
+        return []
+    by_key: dict[str, list[tuple[int, str]]] = {}
+    for n, key, val in _parse_env_file(p):
+        by_key.setdefault(key, []).append((n, val))
+    out: list[str] = []
+    for key, entries in by_key.items():
+        if names and key not in names:
+            continue
+        if len(entries) > 1 and len({v for _, v in entries}) > 1:
+            lines = ", ".join(str(n) for n, _ in entries)
+            out.append(f"{key} appears on lines {lines} with different values; the first one wins. Delete the extra lines.")
+        used = os.environ.get(key)
+        if key not in _FILE_KEYS and used is not None and used != entries[0][1]:
+            out.append(f"{key} is also set in your shell with a different value, and the shell wins over .env.")
+    return out
 
 
 def load_settings(env_file: str | Path | None = ".env") -> Settings:
@@ -118,4 +163,5 @@ def load_settings(env_file: str | Path | None = ".env") -> Settings:
         credit_cycle_day=int(e("CREDIT_CYCLE_DAY", "7")),
         user_daily_runs=int(e("USER_DAILY_RUNS", "25")),
         allow_hcm_sensitive=_b("ALLOW_HCM_SENSITIVE"),
+        demo_mode=_b("DEMO_MODE"),
     )

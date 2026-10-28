@@ -117,6 +117,12 @@ class RunContext:
         if d.verdict == "deny":
             await self.db.audit(self.user_id, "tool_denied", f"{tool_name} {_short(tool_input)} :: {d.reason}")
             return PermissionResultDeny(message=d.reason)
+        if d.verdict == "needs_plan" and P.bare(tool_name) in P.GENERIC_READERS and not self.settings.allow_hcm_sensitive:
+            hit = P.touches_sensitive_resource(tool_input)
+            if hit:
+                why = f"{hit} holds pay or identity data, which is not available"
+                await self.db.audit(self.user_id, "tool_denied", f"{tool_name} {_short(tool_input)} :: {why}")
+                return PermissionResultDeny(message=why)
         if d.verdict == "needs_plan":
             ok, why = self.state.covers(tool_name, tool_input)
             if not ok:
@@ -140,7 +146,9 @@ def build_options(s: Settings, ctx: RunContext, resume: Optional[str]) -> Claude
           {"type": "object", "required": ["summary", "steps"], "properties": {
               "summary": {"type": "string"},
               "steps": {"type": "array", "items": {"type": "object", "required": ["tool"], "properties": {
-                  "tool": {"type": "string"}, "resource": {"type": "string"}, "note": {"type": "string"}}}}}})
+                  "tool": {"type": "string"},
+                  "resource": {"type": "string", "description": "Only for fusion_query_resource, fusion_get_resource_record, query_resource and get_record. Leave it out for every other tool."},
+                  "note": {"type": "string", "description": "Filters, fields and limit, for the user to read."}}}}}})
     async def propose(args):
         return _result(*(await ctx.propose_query_plan(args)))
 
@@ -275,7 +283,7 @@ class LiveRunner:
                 await client.disconnect()
             except Exception:
                 pass
-        out.duration_s = round(time.monotonic() - t0, 2)
+        out.duration_s = round(time.monotonic() - t0 - ctx.approval_seconds(), 2)     # time working, not time waiting for the tap
         out.data_calls = ctx.state.data_calls
         out.answer = result_text or (texts[-1].strip() if texts else "")
         if out.status == "error" and not out.message:           # no failure signalled: derive the outcome

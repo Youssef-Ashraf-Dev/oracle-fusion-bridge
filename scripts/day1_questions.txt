@@ -4,7 +4,7 @@
 
 What Fusion resources are available for payables invoices, and which fields can I filter them on?
 List the ledgers on this pod.
-Show the 10 most recent payables invoices with supplier, invoice number, amount and status.
+Can you tell me the last 10 employees, by names, who took an absence leave the last 6 months?
 How many payables invoices are on hold, and what is their total amount by currency?
 Find suppliers whose name starts with A and show their status.
 Show the 10 most recent purchase orders with supplier, status and buyer.

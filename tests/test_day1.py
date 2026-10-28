@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock, ToolUseBlock
 
-from bridge.day1 import (Question, RecordingApprover, RunRecord, default_variants, load_questions, p90, parse_variant,
+from bridge.day1 import (Question, ask_yes_no, parse_yes_no, RecordingApprover, RunRecord, default_variants, load_questions, p90, parse_variant,
                          render_markdown, run_spike, summarise, to_record, variant_settings, write_outputs)
 from bridge.live.plan import Plan, Step
 from bridge.live.session import LiveResult
@@ -78,7 +78,7 @@ async def test_recording_approver_modes():
 
 def test_variant_labels_name_a_model_and_a_skill_mode():
     assert parse_variant("haiku/native") == ("claude-haiku-5-5", "native")
-    assert parse_variant("sonnet") == ("claude-sonnet-5-5", "native")
+    assert parse_variant("haiku") == ("claude-haiku-5-5", "native")
     assert parse_variant("claude-haiku-5-5/none") == ("claude-haiku-5-5", "none")
     for bad in ("haiku/bogus", "/native"):
         with pytest.raises(ValueError):
@@ -89,10 +89,10 @@ def test_variant_settings_and_defaults(settings, tmp_path):
     import dataclasses
     skill = tmp_path / "SKILL.md"; skill.write_text("x")
     base = dataclasses.replace(settings, planner_skill=skill)
-    v = variant_settings(base, "sonnet/inline")
-    assert (v.model, v.skill_mode) == ("claude-sonnet-5-5", "inline")
-    assert default_variants(base) == ["haiku/native", "sonnet/native"]
-    assert default_variants(settings) == ["haiku/none", "sonnet/none"]                 # no skill file: nothing to load
+    v = variant_settings(base, "haiku/inline")
+    assert (v.model, v.skill_mode) == ("claude-haiku-5-5", "inline")
+    assert default_variants(base) == ["haiku/native"]
+    assert default_variants(settings) == ["haiku/none"]                                # no skill file: nothing to load
     with pytest.raises(ValueError):
         variant_settings(settings, "haiku/native")                                      # would silently run without the skill
 
@@ -159,3 +159,17 @@ async def test_spike_runs_each_question_in_each_variant_and_records_everything(t
                    "Query plan: s", "## Gate for Day 1", "np.example.com"):
         assert needle in md
     assert "write-tool attempts 1" in md
+
+
+@pytest.mark.parametrize("text,expected", [("y", True), (" YES ", True), ("n", False), ("no", False), ("", False),
+                                           ("Can you tell me the last 10 employees?y", None), ("maybe", None)])
+def test_parse_yes_no(text, expected):
+    assert parse_yes_no(text) is expected
+
+
+async def test_pasted_text_is_asked_again_instead_of_counting_as_a_denial():
+    answers = iter(["Can you tell me the last 10 employees who took leave?y", "y"])
+    said = []
+    async def read(prompt): return next(answers)
+    assert await ask_yes_no(read, "Approve? ", said.append) is True
+    assert said == ["Please type y or n."]

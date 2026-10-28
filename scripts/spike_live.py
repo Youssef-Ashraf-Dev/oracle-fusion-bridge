@@ -9,14 +9,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from bridge.config import load_settings                                   # noqa: E402
+from bridge.day1 import ask_yes_no                                        # noqa: E402
 from bridge.live.session import LiveRunner                                # noqa: E402
 from bridge.state.db import Database                                      # noqa: E402
 
 
 async def console_approver(plan) -> bool:
     print("\n" + plan.render())
-    ans = await asyncio.to_thread(input, "Approve these data calls? [y/N] ")
-    return ans.strip().lower() == "y"
+    return await ask_yes_no(lambda prompt: asyncio.to_thread(input, prompt), "Approve these data calls? [y/N] ")
 
 
 async def say(text: str) -> None:

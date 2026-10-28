@@ -1,6 +1,6 @@
 """Day 1, step 2: run representative questions through the live pipeline and measure cost and quality.
 
-    python scripts/day1_spike.py                              # haiku and sonnet, skill loaded as chat does (native)
+    python scripts/day1_spike.py                              # Haiku, skill loaded as chat does (native)
     python scripts/day1_spike.py --runs haiku/native,haiku/inline,haiku/none   # how the skill reaches the model
     python scripts/day1_spike.py --approve ask --only 3,4     # approve plans yourself for a few questions
     python scripts/day1_spike.py --budget 1.00                # raise the per-run cap for this run only
@@ -16,21 +16,20 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from bridge.config import load_settings                                   # noqa: E402
-from bridge.day1 import (default_variants, has_skill, load_questions, run_spike, summarise,  # noqa: E402
+from bridge.day1 import (ask_yes_no, default_variants, has_skill, load_questions, run_spike, summarise,  # noqa: E402
                          variant_settings, write_outputs)
 from bridge.state.db import Database                                      # noqa: E402
 
 
 async def ask_at_terminal(plan_text: str) -> bool:
     print("\n" + plan_text)
-    ans = await asyncio.to_thread(input, "Approve these data calls? [y/N] ")
-    return ans.strip().lower() == "y"
+    return await ask_yes_no(lambda prompt: asyncio.to_thread(input, prompt), "Approve these data calls? [y/N] ")
 
 
 async def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--questions", default=str(Path(__file__).with_name("day1_questions.txt")))
-    ap.add_argument("--runs", default=None, help="comma list of model/skill-mode, e.g. haiku/native,sonnet/native (default: haiku and sonnet)")
+    ap.add_argument("--runs", default=None, help="comma list of model/skill-mode, e.g. haiku/native,haiku/inline (default: haiku/native)")
     ap.add_argument("--effort", default=None, choices=["low", "medium", "high", "xhigh", "max"])
     ap.add_argument("--approve", choices=["auto", "ask"], default="auto")
     ap.add_argument("--only", default="", help="comma list of question numbers to run")
