@@ -274,6 +274,8 @@ class LiveRunner:
                     result_text = (m.result or "").strip()
                     if m.subtype == "error_max_budget_usd":
                         out.status, out.message = "budget", "The run hit its cost limit."
+                    elif m.subtype == "error_max_turns":
+                        out.status, out.message = "turns", "The run hit its step limit."
                     elif m.is_error:
                         out.status = "error"
                         out.message = "; ".join(str(e) for e in (m.errors or [])) or "The agent run failed."

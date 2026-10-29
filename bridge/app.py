@@ -83,6 +83,7 @@ FAILURES = {
     "denied": "Cancelled: the query plan wasn't approved, so nothing was read.",
     "timeout": "That took too long and was stopped. Try a narrower question.",
     "budget": "That question needed more than the per-question cost limit. Try something narrower.",
+    "turns": "That needed more steps than I'm allowed in one question. Try a narrower question, or ask for one thing at a time.",
     "no_answer": "I couldn't produce an answer. Try rephrasing, or name the resource and the period you need.",
 }
 

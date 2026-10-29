@@ -195,6 +195,14 @@ async def test_approval_timeout_denies(tmp_path, settings):
     await db.close()
 
 
+async def test_step_limit_gets_its_own_status(tmp_path, settings):
+    async def script(c): yield result(0.2, subtype="error_max_turns", is_error=True, text="")
+    db, runner, _ = await make(tmp_path, settings, yes, script)
+    res = await runner.run(7, "q")
+    assert res.status == "turns" and "step limit" in res.message
+    await db.close()
+
+
 async def test_budget_error_and_no_answer(tmp_path, settings):
     async def s_budget(c): yield result(0.6, subtype="error_max_budget_usd", is_error=True, text="")
     db, runner, _ = await make(tmp_path, settings, yes, s_budget)
@@ -329,7 +337,7 @@ def test_planner_skill_modes_in_the_prompt(tmp_path):
 def test_prompt_states_the_rules_the_cheat_sheet_calls_for():
     for needle in ("propose_query_plan", "isError", "fields and a limit", "compute tools", "plain text", "cannot change anything",
                    "typed tools take none", "needs no describe", "Plan once and plan generously", "finance and",
-                   "combine conditions"):
+                   "combine conditions", "Stop early", "403", "{id}"):
         assert needle in BRIDGE_RULES
 
 

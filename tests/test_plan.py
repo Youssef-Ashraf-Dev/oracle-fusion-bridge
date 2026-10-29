@@ -110,3 +110,24 @@ def test_plan_steps_on_pay_or_identity_resources_are_refused_before_the_user_is_
             parse_plan({"summary": "x", "steps": [{"tool": "query_resource", "resource": res}]})
     assert parse_plan({"summary": "x", "steps": [{"tool": "query_resource", "resource": "workers"}]}).steps[0].resource == "workers"
     assert parse_plan({"summary": "x", "steps": [{"tool": "query_resource", "resource": "salaries"}]}, allow_sensitive=True)
+
+
+def test_record_ids_and_placeholders_in_resource_paths_match_each_other():
+    """The second real run: the plan said workers/{personid}/child/assignments, the calls carried real ids."""
+    st = PlanState(approved=[parse_plan({"summary": "job titles", "steps": [
+        {"tool": "query_resource", "resource": "workers/{personid}/child/assignments"},
+        {"tool": "query_resource", "resource": "workers/300000008800424/child/workrelationships"}]})])
+    assert st.covers("mcp__fusion__query_resource", {"resource": "workers/300000010302105/child/assignments"})[0]
+    assert st.covers("mcp__fusion__query_resource", {"resource": "Workers/300000008800424/child/workRelationships/"})[0]
+    assert st.covers("mcp__fusion__query_resource", {"resource": "workers/300000008500099/child/workrelationships"})[0]   # another person, same path
+    ok, why = st.covers("mcp__fusion__query_resource", {"resource": "workers/300000010302105/child/salaries"})
+    assert not ok and "does not match" in why
+    assert not st.covers("mcp__fusion__query_resource", {"resource": "emps"})[0]
+
+
+@pytest.mark.parametrize("raw,norm", [("workers/{personid}/child/assignments", "workers/*/child/assignments"),
+                                      ("Workers/123/Child/Assignments/", "workers/*/child/assignments"),
+                                      ("invoices", "invoices"), ("/emps/", "emps"), ("workers/00020000000EACED/child/x", "workers/*/child/x")])
+def test_resource_normalisation(raw, norm):
+    from bridge.live.plan import _norm
+    assert _norm(raw) == norm

@@ -142,6 +142,7 @@ async def test_refuses_cleanly_when_live_is_not_configured(tmp_path, settings):
     (LiveResult(status="denied"), ["wasn't approved"]),
     (LiveResult(status="timeout"), ["too long"]),
     (LiveResult(status="budget"), ["cost limit"]),
+    (LiveResult(status="turns"), ["more steps", "narrower"]),
     (LiveResult(status="no_answer"), ["rephrasing"]),
     (LiveResult(status="error", message="CLIConnectionError: secret path /home/x"), ["has been logged"]),
     (LiveResult(status="no_answer", tool_errors=["Error executing tool: [Errno -2] Name or service not known"]),

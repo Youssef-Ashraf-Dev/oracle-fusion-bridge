@@ -6,6 +6,7 @@ an approved plan step, and the total number of data calls is capped.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Optional
 
@@ -69,7 +70,10 @@ def parse_plan(raw: dict[str, Any], allow_sensitive: bool = False) -> Plan:
 
 
 def _norm(resource: Any) -> str:
-    return str(resource).strip().strip("/").lower()
+    """Normalise a resource path. A segment holding a digit or a brace is a record id or a placeholder such as
+    {personid}; it becomes * so that workers/{personid}/child/assignments matches workers/300000008800424/child/assignments."""
+    parts = [("*" if re.search(r"[\d{}]", p) else p.lower()) for p in str(resource).strip().strip("/").split("/") if p]
+    return "/".join(parts)
 
 
 @dataclass
