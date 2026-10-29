@@ -74,3 +74,40 @@ def test_skill_mode_falls_back_to_none_without_a_file(tmp_path):
     f = tmp_path / "SKILL.md"; f.write_text("x")
     assert Settings(skill_mode="native", planner_skill=f).effective_skill_mode == "native"
     assert Settings(skill_mode="none", planner_skill=f).effective_skill_mode == "none"
+
+
+def test_origin_duplicates_and_shell_overrides_are_reported(tmp_path, monkeypatch):
+    import bridge.config as C
+    f = tmp_path / ".env"
+    f.write_text("ORACLE_FUSION_BASE_URL=https://YOUR-NONPROD-POD.fa.ocs.oraclecloud.com\nORACLE_USERNAME=svc\n"
+                 "ORACLE_FUSION_BASE_URL=https://real-dev1.fa.ocs.oraclecloud.com\nMODEL=claude-haiku-5-5\n")
+    for k in ("ORACLE_FUSION_BASE_URL", "ORACLE_USERNAME", "MODEL"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setattr(C, "_FILE_KEYS", {})
+    C.load_env_file(f)
+    import os
+    assert os.environ["ORACLE_FUSION_BASE_URL"].startswith("https://YOUR-NONPROD")      # the first line wins
+    assert C.origin("ORACLE_FUSION_BASE_URL") == ".env line 1" and C.origin("MODEL") == ".env line 4"
+    assert C.origin("NOT_A_SETTING_XYZ") == "not set"
+    problems = C.env_conflicts(f, ("ORACLE_FUSION_BASE_URL",))
+    assert len(problems) == 1 and "lines 1, 3" in problems[0] and "first one wins" in problems[0]
+    assert C.env_conflicts(f, ("ORACLE_USERNAME",)) == []
+    # a shell variable that differs from the file
+    g = tmp_path / "g.env"
+    g.write_text("ORACLE_USERNAME=from-file\n")
+    monkeypatch.setattr(C, "_FILE_KEYS", {})
+    monkeypatch.setenv("ORACLE_USERNAME", "from-shell")
+    C.load_env_file(g)
+    assert C.origin("ORACLE_USERNAME").startswith("your shell environment")
+    assert any("shell wins" in x for x in C.env_conflicts(g, ("ORACLE_USERNAME",)))
+    assert C.env_conflicts(tmp_path / "missing.env") == []
+
+
+def test_the_session_settings_have_sensible_defaults_and_come_from_the_environment(monkeypatch):
+    from bridge.config import Settings, load_settings
+    d = Settings()
+    assert d.session_idle_minutes == 120 and str(d.engine_dir).replace("\\", "/").endswith("data/engine")
+    monkeypatch.setenv("SESSION_IDLE_MINUTES", "45")
+    monkeypatch.setenv("ENGINE_DIR", "/tmp/somewhere")
+    s = load_settings(env_file=None)
+    assert s.session_idle_minutes == 45 and str(s.engine_dir).replace("\\", "/") == "/tmp/somewhere"

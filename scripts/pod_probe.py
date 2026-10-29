@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import httpx                                                              # noqa: E402
 
-from bridge.config import load_settings                                   # noqa: E402
+from bridge.config import env_conflicts, load_settings, origin             # noqa: E402
 
 
 @dataclass
@@ -88,11 +88,19 @@ def advice(results: list[Result]) -> list[str]:
     return tips
 
 
-def report(base: str, user: str, password: str, results: list[Result], source: str = ".env") -> str:
+def report(base: str, user: str, password: str, results: list[Result], sources: Optional[dict] = None,
+           problems: Optional[list] = None) -> str:
     proxies = [k for k in ("HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy") if os.environ.get(k)]
-    lines = [f"Pod:      {base!r}",
-             f"User:     {user!r} ({len(user)} characters)   Password: {'set' if password else 'EMPTY'} ({len(password)} characters)",
-             f"Settings: loaded from {source}" + (f"   Proxy variables set: {', '.join(proxies)}" if proxies else ""), ""]
+    src = sources or {}
+    lines = [f"Pod:      {base!r}" + (f"   <- from {src['pod']}" if "pod" in src else ""),
+             f"User:     {user!r} ({len(user)} characters)" + (f"   <- from {src['user']}" if "user" in src else ""),
+             f"Password: {'set' if password else 'EMPTY'} ({len(password)} characters)" + (f"   <- from {src['password']}" if "password" in src else "")]
+    if "placeholder" in base.lower() or "your-nonprod-pod" in base.lower():
+        lines.append("!! The pod URL is still the example value from .env.example. Put the real pod URL in .env.")
+    lines += [f"!! {p}" for p in (problems or [])]
+    if proxies:
+        lines.append(f"Proxy variables set: {', '.join(proxies)}")
+    lines.append("")
     for r in results:
         verdict = "OK" if r.status and r.status < 400 else "FAIL"
         lines.append(f"{verdict:4} {r.name:32} {r.path[:46]:46} -> {r.status if r.status is not None else 'no answer'}"
@@ -109,7 +117,8 @@ async def main() -> int:
         print("ORACLE_FUSION_BASE_URL, ORACLE_USERNAME and ORACLE_PASSWORD must all be set in .env")
         return 2
     results = await probe(s.oracle_base_url, s.oracle_user, s.oracle_password, s.oracle_api_version)
-    print(report(s.oracle_base_url, s.oracle_user, s.oracle_password, results))
+    sources = {"pod": origin("ORACLE_FUSION_BASE_URL"), "user": origin("ORACLE_USERNAME"), "password": origin("ORACLE_PASSWORD")}
+    print(report(s.oracle_base_url, s.oracle_user, s.oracle_password, results, sources, env_conflicts()))
     return 0 if all(r.status == 200 for r in results) else 1
 
 

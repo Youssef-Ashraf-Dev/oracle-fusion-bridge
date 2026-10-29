@@ -23,6 +23,8 @@ class Settings:
     planner_skill: Optional[Path] = None          # the vendor planner skill (SKILL.md) Claude chat would load
     skill_mode: str = "native"                    # native: the Skill tool, as in chat | inline: in the system prompt | none
     runtime_dir: Path = Path("./data/runtime")    # working directory the CLI runs in; holds .claude/skills/
+    engine_dir: Path = Path("./data/engine")      # where the engine keeps its saved conversations (sensitive: they hold answers)
+    session_idle_minutes: int = 120               # a conversation idle longer than this starts fresh; 0 = never
     max_mcp_output_tokens: int = 25000            # the engine's cap on one tool result; larger results become unreadable files
     db_path: Path = Path("./data/bridge.db")
 
@@ -36,6 +38,7 @@ class Settings:
 
     run_budget_usd: float = 0.60                  # per question, passed to the Agent SDK; Day 1 tunes it
     max_turns: int = 30
+    max_rows_per_call: int = 200                  # a data call asking for more rows than this is refused
     monthly_credit_usd: float = 240.0
     credit_cycle_day: int = 7
     user_daily_runs: int = 25
@@ -146,6 +149,8 @@ def load_settings(env_file: str | Path | None = ".env") -> Settings:
         effort=e("EFFORT") or None,
         skill_mode=e("SKILL_MODE", "native").strip().lower(),
         runtime_dir=Path(e("RUNTIME_DIR", "./data/runtime")),
+        engine_dir=Path(e("ENGINE_DIR", "./data/engine")),
+        session_idle_minutes=int(e("SESSION_IDLE_MINUTES", "120")),
         max_mcp_output_tokens=int(e("MAX_MCP_OUTPUT_TOKENS", "25000")),
         mcp_dir=Path(e("MCP_DIR", "./vendor/ris-claude-gateway")),
         planner_skill=Path(skill) if skill else None,
@@ -159,6 +164,7 @@ def load_settings(env_file: str | Path | None = ".env") -> Settings:
         mcp_prod_writes_enabled=_b("MCP_PROD_WRITES_ENABLED"),
         run_budget_usd=float(e("RUN_BUDGET_USD", "0.60")),
         max_turns=int(e("MAX_TURNS", "30")),
+        max_rows_per_call=int(e("MAX_ROWS_PER_CALL", "200")),
         monthly_credit_usd=float(e("MONTHLY_CREDIT_USD", "240")),
         credit_cycle_day=int(e("CREDIT_CYCLE_DAY", "7")),
         user_daily_runs=int(e("USER_DAILY_RUNS", "25")),

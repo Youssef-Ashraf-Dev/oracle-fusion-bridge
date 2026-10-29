@@ -31,7 +31,7 @@ OK = {"/": (200, "<html>sign in</html>"), "invoices": (200, "{}"), "purchaseOrde
 def test_all_good_says_rerun_the_preflight():
     r = run(OK)
     assert [x.status for x in r] == [200] * 5 and "rerun scripts/day1_preflight.py" in pp.advice(r)[0]
-    assert "OK" in pp.report("https://pod.example.com", "u", "p", r)
+    assert "OK" in pp.report("https://pod.example.com", "u", "p", r) and "still the example value" not in pp.report("https://pod.example.com", "u", "p", r)
 
 
 def test_wrong_password_is_a_401_and_says_so():
@@ -76,3 +76,11 @@ def test_report_never_prints_the_password():
 
 def test_snippet_strips_markup():
     assert pp.snippet("<html><style>x{}</style><body>Hello   <b>world</b></body></html>") == "Hello world"
+
+
+def test_report_shows_where_each_setting_came_from_and_flags_the_placeholder():
+    r = run(OK)
+    text = pp.report("https://YOUR-NONPROD-POD.fa.ocs.oraclecloud.com", "svc", "pw", r,
+                     {"pod": ".env line 5", "user": ".env line 7", "password": ".env line 8"},
+                     ["ORACLE_FUSION_BASE_URL appears on lines 5, 9 with different values; the first one wins."])
+    assert "<- from .env line 5" in text and "still the example value" in text and "lines 5, 9" in text

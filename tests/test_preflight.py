@@ -120,6 +120,7 @@ async def test_sdk_startup_check_against_the_real_cli_spends_nothing(tmp_path, m
     assert c["Both MCP servers connect (fusion, bridge)"].status == PASS
     assert c["Fusion tools offered to the model"].detail.startswith("59")
     assert c["No built-in tools except what is intended"].status == PASS
+    assert c["Engine telemetry switched off"].status == PASS and "cc-plugin-telemetry" not in c["Engine telemetry switched off"].detail
     assert ("Planner skill demo-skill discovered (native, as in chat)" in c) == expect_skill_tool
     if expect_skill_tool:
         assert c["Planner skill demo-skill discovered (native, as in chat)"].status == PASS

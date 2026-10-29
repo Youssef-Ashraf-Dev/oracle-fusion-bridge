@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from typing import Callable, Optional
 from urllib.parse import urlparse
 
-from .config import Settings
+from .config import Settings, env_conflicts, origin
 from .live import permissions as P
 from .live.session import mcp_env
 from .mcp_util import ToolError, unwrap
@@ -57,7 +57,13 @@ def check_config(s: Settings) -> list[Check]:
                      ("missing: " + ", ".join(missing)) if missing else "ANTHROPIC_API_KEY, ORACLE_* set"))
     host = urlparse(s.oracle_base_url).netloc
     out.append(Check("Pod host (must be NON-PRODUCTION)", WARN if host else FAIL,
-                     f"{host or 'not set'}  <- confirm this is the non-production pod before continuing"))
+                     f"{host or 'not set'}  (from {origin('ORACLE_FUSION_BASE_URL')})  <- confirm this is the non-production pod"))
+    if "your-nonprod-pod" in s.oracle_base_url.lower():
+        out.append(Check("Pod URL is still the placeholder", FAIL,
+                         "ORACLE_FUSION_BASE_URL still has the example value from .env.example; set the real pod URL"))
+    for problem in env_conflicts(names=("ORACLE_FUSION_BASE_URL", "ORACLE_ALLOWED_BASE_URLS", "ORACLE_USERNAME",
+                                        "ORACLE_PASSWORD", "ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN", "MODEL")):
+        out.append(Check("Settings sources", FAIL, problem))
     allow = [a.strip().lower() for a in s.oracle_allowed_base_urls.split(",") if a.strip()]
     if not allow:
         out.append(Check("Pod guard ORACLE_ALLOWED_BASE_URLS", WARN, "empty: the MCP will not check the pod URL"))
@@ -208,6 +214,9 @@ async def check_sdk(s: Settings, timeout: float = 240) -> list[Check]:
                      f"{len(fusion)} (policy knows {len(P.KNOWN)})"))
     out.append(Check("No built-in tools except what is intended", PASS if other == expected else FAIL,
                      f"built-in tools offered: {other or 'none'}; expected: {expected or 'none'}"))
+    plugins = [p.get("name") for p in init.get("plugins", [])]
+    out.append(Check("Engine telemetry switched off", PASS if "cc-plugin-telemetry" not in plugins else WARN,
+                     f"built-in plugins loaded: {', '.join(plugins) or 'none'}"))
     if s.effective_skill_mode == "native":
         from .live.skills import skill_name
         name = skill_name(s.planner_skill)
