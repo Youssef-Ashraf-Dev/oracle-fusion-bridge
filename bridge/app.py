@@ -6,13 +6,20 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import logging
+import re
+import time
 from dataclasses import dataclass
-from typing import Awaitable, Callable
+from typing import Awaitable, Callable, Optional
 
 from .config import Settings
 from .live.plan import Approver
 from .live.session import LiveRunner
 from .state.db import Database
+
+log = logging.getLogger("bridge")
+
+_UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
 HELP = ("Ask a question about Oracle Fusion data and I'll look it up. I can only read.\n"
         "/ask <question>, or just type your question\n"
@@ -97,10 +104,15 @@ class Bridge:
         self.s, self.db, self.make_runner = settings, db, make_runner
         self.sem = asyncio.Semaphore(settings.max_concurrent_runs)
         self.active: set[int] = set()
+        self._warned: set[int] = set()
 
     async def handle(self, command: str, text: str, ch: Channel) -> None:
         if not await self.db.is_allowed(ch.user_id):                        # FR-01: silent
             await self.db.audit(ch.user_id, "rejected_user", command)
+            if ch.user_id not in self._warned:                              # tell the operator once; stay silent in the chat
+                self._warned.add(ch.user_id)
+                log.warning("Ignored /%s from Telegram ID %s: not registered. To allow this person, put the ID in "
+                            "ALLOWED_TELEGRAM_USER_IDS in .env and restart the bot.", command, ch.user_id)
             return
         text = text.strip()
         if command in ("start", "help"):
@@ -127,10 +139,37 @@ class Bridge:
         finally:
             self.active.discard(ch.user_id)
 
+    def usable_session(self, session_id: Optional[str]) -> Optional[str]:
+        """A stored session the engine can resume. Live mode needs a real session id (a UUID); the demo agent's
+        invented ids, or anything else, are dropped so they can never block a chat."""
+        if not session_id:
+            return None
+        if self.s.demo_mode:
+            return session_id
+        return session_id if _UUID.match(session_id) else None
+
     async def _ask(self, text: str, ch: Channel) -> None:
         chat = await self.db.get_chat(ch.chat_id)
-        await ch.send_text("Working on it. I'll show you a plan to approve before any data is read.")
-        res = await self.make_runner(ch.approve).run(ch.user_id, text, chat["live_session_id"], ch.status)
+        stored = chat["live_session_id"]
+        resume = self.usable_session(stored)
+        if stored and not resume:
+            log.warning("Dropping stored session %r: it is not a resumable session id (left over from demo mode?)", stored)
+            await self.db.set_live_session(ch.chat_id, None)
+        limit_s = self.s.session_idle_minutes * 60
+        if resume and limit_s and chat.get("updated") and time.time() - chat["updated"] > limit_s:
+            resume = None                                                   # old results may be stale: begin again
+            await self.db.set_live_session(ch.chat_id, None)
+            await ch.send_text(f"Starting a fresh conversation: the last one was idle for more than "
+                               f"{self.s.session_idle_minutes} minutes, so its earlier results may be out of date.")
+        await ch.send_text("Working on it...")
+        res = await self.make_runner(ch.approve).run(ch.user_id, text, resume, ch.status)
+        if resume and res.status == "error" and res.turns == 0 and not res.tool_calls:
+            # The engine refused to resume (an expired or missing session). Start a fresh conversation, once.
+            log.warning("Could not resume session %s (%s); starting a new conversation", resume, res.message or "no details")
+            await self.db.set_live_session(ch.chat_id, None)
+            res = await self.make_runner(ch.approve).run(ch.user_id, text, None, ch.status)
+        if res.status == "error":
+            log.error("Run failed for user %s: %s", ch.user_id, res.message or "no details from the engine")
         await self.db.record_run(ch.user_id, "ask", res.status, res.cost_usd, res.duration_s, text)
         if res.session_id and res.status in ("ok", "no_answer"):
             await self.db.set_live_session(ch.chat_id, res.session_id)

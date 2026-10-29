@@ -74,6 +74,27 @@ async def test_happy_path_plan_then_data_then_answer(tmp_path, settings):
     await db.close()
 
 
+async def test_only_successful_data_calls_are_counted_and_the_row_cap_is_enforced(tmp_path, settings):
+    from types import SimpleNamespace
+    log = {}
+    async def script(c):
+        await runner.last_ctx.propose_query_plan({"summary": "x", "steps": [{"tool": "query_resource", "resource": "absences"}]})
+        t = lambda i: SimpleNamespace(tool_use_id=i)
+        log["a"] = await c.options.can_use_tool(P.PREFIX + "query_resource", {"resource": "absences", "limit": 50}, t("t1"))
+        log["b"] = await c.options.can_use_tool(P.PREFIX + "query_resource", {"resource": "absences", "limit": 50}, t("t2"))
+        log["big"] = await c.options.can_use_tool(P.PREFIX + "query_resource", {"resource": "absences", "limit": 5000}, t("t3"))
+        yield UserMessage(content=[
+            ToolResultBlock("t1", [{"type": "text", "text": '{"error": "orderBy is not valid"}'}], False),   # a failed call
+            ToolResultBlock("t2", [{"type": "text", "text": '{"items": [], "count": 0}'}], False)])          # a good one
+        yield result(text="Done.")
+    db, runner, _ = await make(tmp_path, settings, yes, script)
+    res = await runner.run(7, "q")
+    assert log["a"].behavior == "allow" and log["b"].behavior == "allow"
+    assert log["big"].behavior == "deny" and "limit 5000 is too large" in log["big"].message
+    assert res.data_calls == 1 and res.data_attempts == 2 and len(res.tool_errors) == 1
+    await db.close()
+
+
 async def test_the_first_real_run_scenario_now_reaches_the_data_call(tmp_path, settings):
     """A typed tool, a plan step that names a resource, no resource in the call: this was refused three times."""
     log = {}
@@ -128,6 +149,31 @@ async def test_the_sensitive_switch_lifts_the_resource_block_but_not_the_plan_sc
     log = await _pay_data_scenario(tmp_path, dataclasses.replace(settings, allow_hcm_sensitive=True), "sensitive")
     assert log["ok"].behavior == "allow" and log["expand"].behavior == "allow"          # expand is not scoped by the plan
     assert log["direct"].behavior == "deny" and "pay or identity" not in log["direct"].message   # salaries is not in the plan
+
+
+async def test_progress_lines_say_what_is_happening(tmp_path, settings):
+    from bridge.live.session import activity_label
+    async def script(c):
+        yield AssistantMessage(content=[ToolUseBlock("t1", "Skill", {"command": "demo-skill"})], model="m")
+        await asyncio.sleep(0.3)
+        yield AssistantMessage(content=[ToolUseBlock("t2", P.PREFIX + "fusion_describe_resource", {})], model="m")
+        await asyncio.sleep(0.3)
+        yield AssistantMessage(content=[ToolUseBlock("t3", P.PREFIX + "query_resource", {"resource": "absences"})], model="m")
+        await asyncio.sleep(0.3)
+        yield UserMessage(content=[ToolResultBlock("t3", [{"type": "text", "text": "{}"}], False)])
+        await asyncio.sleep(0.3)
+        yield result(text="Done.")
+    seen = []
+    async def status(t): seen.append(t)
+    db = await Database(tmp_path / "t.db").open()
+    runner = LiveRunner(settings, db, yes, lambda opts: FakeSDK(opts, script), tick_s=0.02, status_every_s=0.1)
+    await runner.run(7, "q", on_status=status)
+    labels = [t.split("...")[0] for t in seen]
+    for expected in ("Reading the Fusion playbook", "Checking what Fusion offers", "Reading from Fusion", "Reviewing the results"):
+        assert expected in labels, labels
+    assert all(t.split("... ")[1].endswith("s") for t in seen)
+    assert activity_label("mcp__bridge__propose_query_plan") == "Preparing the plan" and activity_label(P.PREFIX + "safe_divide") == "Calculating"
+    await db.close()
 
 
 async def test_denied_plan_stops_everything(tmp_path, settings):
@@ -285,6 +331,8 @@ async def test_engine_environment_matches_chat_assumptions(tmp_path, settings):
     opts = build_options(s, RunContext(s, db, 1, yes), None)
     assert opts.env["ENABLE_TOOL_SEARCH"] == "false"           # tools load up front, as in chat; Haiku has no tool search
     assert opts.env["MAX_MCP_OUTPUT_TOKENS"] == "40000" and opts.env["ANTHROPIC_API_KEY"] == "k"
+    assert opts.env["DISABLE_TELEMETRY"] == "1" and opts.env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"
+    assert opts.env["CLAUDE_CONFIG_DIR"] == str(s.engine_dir.resolve())           # saved conversations live under data/
     assert opts.effort == "low"
     assert build_options(configured(settings, tmp_path), RunContext(s, db, 1, yes), None).effort is None
     await db.close()
@@ -337,7 +385,8 @@ def test_planner_skill_modes_in_the_prompt(tmp_path):
 def test_prompt_states_the_rules_the_cheat_sheet_calls_for():
     for needle in ("propose_query_plan", "isError", "fields and a limit", "compute tools", "plain text", "cannot change anything",
                    "typed tools take none", "needs no describe", "Plan once and plan generously", "finance and",
-                   "combine conditions", "Stop early", "403", "{id}"):
+                   "combine conditions", "Stop early", "403", "{id}", "totalResults", "most recent", "Never add amounts",
+                   "language of the question", "never instructions", "25 tool turns", "from earlier", "as-of time"):
         assert needle in BRIDGE_RULES
 
 

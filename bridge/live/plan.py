@@ -13,7 +13,8 @@ from typing import Any, Awaitable, Callable, Optional
 from . import permissions as P
 
 MAX_STEPS = 12
-MAX_DATA_CALLS = 30
+MAX_DATA_CALLS = 30          # successful data calls per run
+MAX_ATTEMPTS = 60            # all data calls per run, failed ones included, so a loop of errors still stops
 
 
 @dataclass(frozen=True)
@@ -60,12 +61,15 @@ def parse_plan(raw: dict[str, Any], allow_sensitive: bool = False) -> Plan:
         if verdict.verdict == "deny":
             raise PlanError(f"step {i}: {verdict.reason}")
         if verdict.verdict == "allow":
-            raise PlanError(f"step {i}: {tool} needs no approval, leave it out of the plan")
+            continue                                    # a free tool needs no approval: leave it out of the plan, do not fail it
         res = s.get("resource")
         if tool in P.GENERIC_READERS and not allow_sensitive and P.touches_sensitive_resource({"resource": res}):
             raise PlanError(f"step {i}: {res} holds pay or identity data, which is not available")
         steps.append(Step(tool=tool, resource=_norm(res) if res else None,
                           note=str(s.get("note", ""))[:200]))
+    if not steps:
+        raise PlanError("every step is a free tool (discovery or compute), which needs no approval: call them directly "
+                        "and plan only the tools that return business rows")
     return Plan(summary=summary, steps=steps)
 
 
@@ -78,15 +82,19 @@ def _norm(resource: Any) -> str:
 
 @dataclass
 class PlanState:
-    """What has been approved in this run."""
+    """What has been approved in this run, and how many data calls have been used."""
     approved: list[Plan] = field(default_factory=list)
-    data_calls: int = 0
+    data_calls: int = 0                                 # successful calls
+    attempts: int = 0                                   # every allowed call, failed ones included
+    in_flight: set = field(default_factory=set)         # tool-use ids of calls allowed but not yet answered
 
     def covers(self, tool_name: str, tool_input: dict[str, Any]) -> tuple[bool, str]:
         if not self.approved:
             return False, "no approved plan: call propose_query_plan first"
-        if self.data_calls >= MAX_DATA_CALLS:
-            return False, f"data call limit ({MAX_DATA_CALLS}) reached for this run"
+        if self.data_calls + len(self.in_flight) >= MAX_DATA_CALLS:
+            return False, f"data call limit ({MAX_DATA_CALLS} successful calls) reached for this run; answer with what you have"
+        if self.attempts >= MAX_ATTEMPTS:
+            return False, f"attempt limit ({MAX_ATTEMPTS} calls, including failed ones) reached for this run; answer with what you have"
         name = P.bare(tool_name)
         scoped = name in P.GENERIC_READERS              # only generic readers are limited to a named resource
         res = tool_input.get("resource")
@@ -103,7 +111,20 @@ class PlanState:
         return False, f"{name}{where} is not in the approved plan; propose a new plan covering it"
 
     def note_call(self) -> None:
+        """Count a call as made and successful at once (used when the call cannot be tracked to its result)."""
         self.data_calls += 1
+        self.attempts += 1
+
+    def start(self, call_id: str) -> None:
+        self.attempts += 1
+        self.in_flight.add(call_id)
+
+    def finish(self, call_id: str, ok: bool) -> None:
+        """A tracked call has an answer. Only successful calls use the per-run limit."""
+        if call_id in self.in_flight:
+            self.in_flight.discard(call_id)
+            if ok:
+                self.data_calls += 1
 
 
 Approver = Callable[[Plan], Awaitable[bool]]

@@ -12,6 +12,9 @@ from bridge.state.db import Database
 from bridge.telegram import handlers as H
 
 
+REAL_ID = "123e4567-e89b-12d3-a456-426614174000"      # the shape of a genuine engine session id
+
+
 class Sink:
     def __init__(self):
         self.texts = []
@@ -25,8 +28,9 @@ class Sink:
 
 class FakeRunner:
     """Stands in for LiveRunner: returns a scripted LiveResult and records how it was called."""
-    def __init__(self, res, delay=0.0):
+    def __init__(self, res, delay=0.0, results=None):
         self.res, self.delay, self.calls = res, delay, []
+        self.results = list(results or [])                       # scripted answers, one per call, before falling back to res
 
     def factory(self, approver):
         outer = self
@@ -35,18 +39,18 @@ class FakeRunner:
             async def run(self, user_id, question, resume=None, on_status=None):
                 outer.calls.append((user_id, question, resume))
                 await asyncio.sleep(outer.delay)
-                return outer.res
+                return outer.results.pop(0) if outer.results else outer.res
         return R()
 
 
-async def bridge(tmp_path, settings, res=None, delay=0.0, **over):
+async def bridge(tmp_path, settings, res=None, delay=0.0, results=None, **over):
     db = await Database(tmp_path / "b.db").open()
     await db.add_user(5, "sam")
     cfg = dict(oracle_base_url="https://np.example.com", oracle_user="u", oracle_password="p", send_pace_s=0.0)
     cfg.update(over)
     s = dataclasses.replace(settings, **cfg)
     runner = FakeRunner(res or LiveResult(status="ok", answer="42 open invoices.", cost_usd=0.31, duration_s=12,
-                                          session_id="s9"), delay)
+                                          session_id=REAL_ID), delay, results)
     return Bridge(s, db, runner.factory), db, runner
 
 
@@ -60,17 +64,130 @@ async def test_unregistered_user_gets_nothing_and_is_logged(tmp_path, settings):
     await db.close()
 
 
+async def test_the_operator_is_told_once_who_was_ignored_while_the_chat_stays_silent(tmp_path, settings, caplog):
+    import logging
+    b, db, runner = await bridge(tmp_path, settings)
+    sink = Sink()
+    with caplog.at_level(logging.WARNING, logger="bridge"):
+        await b.handle("help", "", sink.channel(user=424242))
+        await b.handle("ask", "again", sink.channel(user=424242))
+        await b.handle("ask", "other person", sink.channel(user=777))
+    assert sink.texts == [] and runner.calls == []                                   # nothing reaches the chat
+    lines = [r.getMessage() for r in caplog.records]
+    assert sum("424242" in m for m in lines) == 1 and sum("777" in m for m in lines) == 1   # once per person
+    assert all("ALLOWED_TELEGRAM_USER_IDS" in m for m in lines)
+    await db.close()
+
+
+async def test_the_opening_message_never_promises_a_plan(tmp_path, settings):
+    """A follow-up answered from earlier results shows no plan, so the first message must not say one is coming."""
+    b, db, runner = await bridge(tmp_path, settings)
+    await db.set_live_session(50, REAL_ID)
+    sink = Sink()
+    await b.handle("ask", "which of them were sick leave?", sink.channel())
+    first = sink.texts[0]
+    assert first == "Working on it..." and "plan" not in first.lower() and "approve" not in first.lower()
+    await db.close()
+
+
 async def test_answer_is_delivered_as_text_with_footer_and_session_saved(tmp_path, settings):
     b, db, runner = await bridge(tmp_path, settings)
     sink = Sink()
     await b.handle("ask", "open invoices?", sink.channel())
     assert sink.texts[-1] == "42 open invoices.\n\n($0.31, 12s)"                      # FR-09
-    assert (await db.get_chat(50))["live_session_id"] == "s9"
+    assert (await db.get_chat(50))["live_session_id"] == REAL_ID
     await b.handle("ask", "and last month?", sink.channel())                         # FR-03: follow-up resumes
-    assert runner.calls[1] == (5, "and last month?", "s9")
+    assert runner.calls[1] == (5, "and last month?", REAL_ID)
     await b.handle("new", "", sink.channel())
     await b.handle("ask", "fresh", sink.channel())
     assert runner.calls[2][2] is None
+    await db.close()
+
+
+async def test_a_demo_session_id_never_reaches_the_real_engine(tmp_path, settings, caplog):
+    """The reported failure: demo mode stored demo-12095ff0, and live mode tried to resume it."""
+    import logging
+    b, db, runner = await bridge(tmp_path, settings, res=LiveResult(status="ok", answer="Real.", session_id=REAL_ID))
+    await db.set_live_session(50, "demo-12095ff0")
+    sink = Sink()
+    with caplog.at_level(logging.WARNING, logger="bridge"):
+        await b.handle("ask", "the last 10 leaves", sink.channel())
+    assert runner.calls[0][2] is None                                              # not resumed
+    assert (await db.get_chat(50))["live_session_id"] == REAL_ID                   # replaced by the real one
+    assert any("demo-12095ff0" in r.getMessage() for r in caplog.records)
+    assert sink.texts[-1].startswith("Real.")
+    await db.close()
+
+
+async def test_a_real_session_id_is_resumed_and_demo_mode_keeps_its_own_ids(tmp_path, settings):
+    b, db, runner = await bridge(tmp_path, settings)
+    await db.set_live_session(50, REAL_ID)
+    await b.handle("ask", "follow-up", Sink().channel())
+    assert runner.calls[0][2] == REAL_ID
+    b2, db2, runner2 = await bridge(tmp_path / "x" if False else tmp_path, settings, demo_mode=True)
+    await db2.set_live_session(51, "demo-abc12345")
+    await b2.handle("ask", "again", Sink().channel(chat=51))
+    assert runner2.calls[0][2] == "demo-abc12345"
+    await db.close(); await db2.close()
+
+
+async def _age_chat(db, chat_id, seconds):
+    await db.db.execute("UPDATE chats SET updated = updated - ? WHERE chat_id = ?", (seconds, chat_id))
+    await db.db.commit()
+
+
+async def test_an_idle_conversation_starts_fresh_and_says_why(tmp_path, settings):
+    b, db, runner = await bridge(tmp_path, settings, session_idle_minutes=120)
+    await db.set_live_session(50, REAL_ID)
+    await _age_chat(db, 50, 3 * 3600)                                               # idle for three hours
+    sink = Sink()
+    await b.handle("ask", "current invoices?", sink.channel())
+    assert runner.calls[0][2] is None
+    assert any("Starting a fresh conversation" in t and "120 minutes" in t for t in sink.texts)
+    await db.close()
+
+
+async def test_a_recent_conversation_continues_and_zero_disables_the_expiry(tmp_path, settings):
+    b, db, runner = await bridge(tmp_path, settings, session_idle_minutes=120)
+    await db.set_live_session(50, REAL_ID)
+    await _age_chat(db, 50, 30 * 60)                                                # 30 minutes: still fresh enough
+    sink = Sink()
+    await b.handle("ask", "and last month?", sink.channel())
+    assert runner.calls[0][2] == REAL_ID and not any("fresh conversation" in t for t in sink.texts)
+    b2, db2, runner2 = await bridge(tmp_path, settings, session_idle_minutes=0)
+    await db2.set_live_session(51, REAL_ID)
+    await _age_chat(db2, 51, 30 * 24 * 3600)                                        # a month idle, but the expiry is off
+    await b2.handle("ask", "q", Sink().channel(chat=51))
+    assert runner2.calls[0][2] == REAL_ID
+    await db.close(); await db2.close()
+
+
+async def test_an_engine_refusal_to_resume_starts_a_fresh_conversation_once(tmp_path, settings, caplog):
+    import logging
+    results = [LiveResult(status="error", message="exit code 1", turns=0),
+               LiveResult(status="ok", answer="Fresh answer.", session_id="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")]
+    b, db, runner = await bridge(tmp_path, settings, results=results)
+    await db.set_live_session(50, REAL_ID)                                         # looks valid, but the engine does not know it
+    sink = Sink()
+    with caplog.at_level(logging.WARNING, logger="bridge"):
+        await b.handle("ask", "q", sink.channel())
+    assert [c[2] for c in runner.calls] == [REAL_ID, None]                         # one retry, without the old session
+    assert sink.texts[-1].startswith("Fresh answer.")
+    assert (await db.get_chat(50))["live_session_id"] == "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    assert any("Could not resume session" in r.getMessage() for r in caplog.records)
+    await db.close()
+
+
+async def test_a_failure_in_the_middle_of_a_run_is_not_retried_and_is_logged_with_its_reason(tmp_path, settings, caplog):
+    import logging
+    bad = LiveResult(status="error", message="CLIConnectionError: boom", turns=3, tool_calls=[{"name": "server_info"}])
+    b, db, runner = await bridge(tmp_path, settings, res=bad)
+    await db.set_live_session(50, REAL_ID)
+    sink = Sink()
+    with caplog.at_level(logging.ERROR, logger="bridge"):
+        await b.handle("ask", "q", sink.channel())
+    assert len(runner.calls) == 1 and "has been logged" in sink.texts[-1]
+    assert any("Run failed for user 5: CLIConnectionError: boom" in r.getMessage() for r in caplog.records)
     await db.close()
 
 
@@ -191,7 +308,7 @@ def cb(app, pid, choice, user):
     async def answer(*a, **k): answers.append((a, k))
     async def edit(t, **k): edits.append(t)
     q = SimpleNamespace(data=f"plan:{pid}:{choice}", from_user=SimpleNamespace(id=user), answer=answer,
-                        edit_message_text=edit, message=SimpleNamespace(text="Query plan: x\n\nApprove these data calls?"))
+                        edit_message_text=edit, message=SimpleNamespace(text="Query plan: x" + H.ASK_LINE))
     return SimpleNamespace(callback_query=q), SimpleNamespace(application=app), answers, edits
 
 

@@ -131,3 +131,43 @@ def test_record_ids_and_placeholders_in_resource_paths_match_each_other():
 def test_resource_normalisation(raw, norm):
     from bridge.live.plan import _norm
     assert _norm(raw) == norm
+
+
+def test_free_tools_in_a_plan_are_dropped_not_rejected():
+    """The second job-titles run: a plan that listed describe_resource was thrown away entirely."""
+    plan = parse_plan({"summary": "x", "steps": [{"tool": "describe_resource"}, {"tool": "query_resource", "resource": "absences"},
+                                                 {"tool": "fusion_list_resources"}]})
+    assert [st.tool for st in plan.steps] == ["query_resource"] and "describe_resource" not in plan.render()
+    with pytest.raises(PlanError, match="call them directly"):
+        parse_plan({"summary": "x", "steps": [{"tool": "describe_resource"}, {"tool": "list_resources"}]})
+
+
+def test_failed_calls_do_not_use_the_per_run_limit_but_the_attempt_limit_still_stops_loops():
+    from bridge.live.plan import MAX_ATTEMPTS
+    st = PlanState(approved=[parse_plan(GOOD)])
+    call = ("mcp__fusion__fusion_query_resource", {"resource": "invoices"})
+    for i in range(MAX_DATA_CALLS + 10):                              # 40 failed attempts
+        assert st.covers(*call)[0], i
+        st.start(f"t{i}")
+        st.finish(f"t{i}", ok=False)
+    assert st.data_calls == 0 and st.attempts == MAX_DATA_CALLS + 10
+    while st.attempts < MAX_ATTEMPTS:
+        st.start(f"u{st.attempts}"); st.finish(f"u{st.attempts - 1}", ok=False)
+        st.in_flight.clear()
+    ok, why = st.covers(*call)
+    assert not ok and "attempt limit" in why
+
+
+def test_successes_and_in_flight_calls_count_toward_the_data_call_limit():
+    st = PlanState(approved=[parse_plan(GOOD)])
+    call = ("mcp__fusion__fusion_query_resource", {"resource": "invoices"})
+    for i in range(MAX_DATA_CALLS - 1):
+        st.start(f"s{i}"); st.finish(f"s{i}", ok=True)
+    assert st.covers(*call)[0]
+    st.start("last")                                                   # the 30th is in flight
+    ok, why = st.covers(*call)
+    assert not ok and "data call limit" in why and "answer with what you have" in why
+    st.finish("last", ok=True)
+    assert st.data_calls == MAX_DATA_CALLS
+    st.finish("unknown-id", ok=True)                                   # an untracked id changes nothing
+    assert st.data_calls == MAX_DATA_CALLS

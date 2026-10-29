@@ -58,6 +58,7 @@ class LiveResult:
     duration_s: float = 0.0
     turns: int = 0
     data_calls: int = 0
+    data_attempts: int = 0
     tool_calls: list[dict] = field(default_factory=list)      # [{"name": ..., "input": ...}] in order
     tool_errors: list[str] = field(default_factory=list)      # failures seen in tool results
     usage: dict = field(default_factory=dict)                 # token counts reported by the SDK
@@ -124,11 +125,21 @@ class RunContext:
                 await self.db.audit(self.user_id, "tool_denied", f"{tool_name} {_short(tool_input)} :: {why}")
                 return PermissionResultDeny(message=why)
         if d.verdict == "needs_plan":
+            limit = tool_input.get("limit")
+            if isinstance(limit, (int, float)) and limit > self.settings.max_rows_per_call:
+                why = (f"limit {int(limit)} is too large: use {self.settings.max_rows_per_call} or less and page with offset, "
+                       "or filter harder")
+                await self.db.audit(self.user_id, "tool_denied", f"{tool_name} {_short(tool_input)} :: {why}")
+                return PermissionResultDeny(message=why)
             ok, why = self.state.covers(tool_name, tool_input)
             if not ok:
                 await self.db.audit(self.user_id, "tool_denied", f"{tool_name} {_short(tool_input)} :: {why}")
                 return PermissionResultDeny(message=why)
-            self.state.note_call()
+            call_id = getattr(_ctx, "tool_use_id", None)
+            if call_id:
+                self.state.start(call_id)                  # counted when its result arrives, and only if it succeeded
+            else:
+                self.state.note_call()
             await self.db.audit(self.user_id, "data_call", f"{tool_name} {_short(tool_input)}")
         return PermissionResultAllow(updated_input=tool_input)
 
@@ -182,7 +193,12 @@ def build_options(s: Settings, ctx: RunContext, resume: Optional[str]) -> Claude
              # needs a built-in tool we do not enable and is unsupported on Haiku models.
              "ENABLE_TOOL_SEARCH": "false",
              # Results over this many tokens are written to a file the agent cannot read.
-             "MAX_MCP_OUTPUT_TOKENS": str(s.max_mcp_output_tokens)},
+             "MAX_MCP_OUTPUT_TOKENS": str(s.max_mcp_output_tokens),
+             # The engine ships a telemetry plugin and update checks. A server that reads company data needs neither.
+             "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1", "DISABLE_TELEMETRY": "1",
+             "DISABLE_ERROR_REPORTING": "1", "DISABLE_AUTOUPDATER": "1",
+             # Keep the engine's saved conversations inside the bot's own data folder, not in the user profile.
+             "CLAUDE_CONFIG_DIR": str(s.engine_dir.resolve())},
         resume=resume, **kw,
     )
 
@@ -196,12 +212,27 @@ def _tool_result_texts(block: ToolResultBlock) -> str:
     return ""
 
 
+def activity_label(tool_name: str) -> str:
+    """What the user is told while a tool runs, in plain words."""
+    if tool_name == "Skill":
+        return "Reading the Fusion playbook"
+    if tool_name.startswith(P.BRIDGE_PREFIX):
+        return "Preparing the plan"
+    name = P.bare(tool_name)
+    if name in P.DISCOVERY:
+        return "Checking what Fusion offers"
+    if name in P.COMPUTE:
+        return "Calculating"
+    return "Reading from Fusion"
+
+
 ClientFactory = Callable[[ClaudeAgentOptions], Any]
 
 
 class LiveRunner:
     def __init__(self, settings: Settings, db: Database, approver: Approver,
-                 client_factory: Optional[ClientFactory] = None, tick_s: float = 1.0):
+                 client_factory: Optional[ClientFactory] = None, tick_s: float = 1.0, status_every_s: float = 10.0):
+        self.status_every_s = status_every_s
         self.s, self.db, self.approver = settings, db, approver
         self.factory = client_factory or (lambda opts: ClaudeSDKClient(opts))
         self.tick_s = tick_s
@@ -230,6 +261,7 @@ class LiveRunner:
         texts: list[str] = []
         result_text = ""
         last_status = 0.0
+        activity = "Thinking"
         try:
             while True:
                 compute = time.monotonic() - t0 - ctx.approval_seconds()
@@ -243,9 +275,9 @@ class LiveRunner:
                 try:
                     m = await asyncio.wait_for(queue.get(), self.tick_s)
                 except asyncio.TimeoutError:
-                    if on_status and compute - last_status >= 10:
+                    if on_status and compute - last_status >= self.status_every_s:
                         last_status = compute
-                        await on_status(f"Working... {int(compute)}s")
+                        await on_status(f"{activity}... {int(compute)}s")
                     continue
                 if m is None:
                     break
@@ -258,11 +290,15 @@ class LiveRunner:
                             texts.append(b.text)
                         elif isinstance(b, ToolUseBlock):
                             out.tool_calls.append({"name": P.bare(b.name), "input": _short(b.input, 200)})
+                            activity = activity_label(b.name)
                 elif isinstance(m, UserMessage) and isinstance(m.content, list):
                     for b in m.content:
                         if isinstance(b, ToolResultBlock):
+                            activity = "Reviewing the results"
                             body = _tool_result_texts(b)
-                            if b.is_error or '"error"' in body[:400]:
+                            failed = bool(b.is_error or '"error"' in body[:400])
+                            ctx.state.finish(b.tool_use_id, ok=not failed)
+                            if failed:
                                 out.tool_errors.append(body[:240])
                 elif isinstance(m, SystemMessage) and not out.session_id:
                     out.session_id = (m.data or {}).get("session_id") if isinstance(m.data, dict) else None
@@ -286,7 +322,8 @@ class LiveRunner:
             except Exception:
                 pass
         out.duration_s = round(time.monotonic() - t0 - ctx.approval_seconds(), 2)     # time working, not time waiting for the tap
-        out.data_calls = ctx.state.data_calls
+        out.data_calls = ctx.state.data_calls                  # successful data calls
+        out.data_attempts = ctx.state.attempts
         out.answer = result_text or (texts[-1].strip() if texts else "")
         if out.status == "error" and not out.message:           # no failure signalled: derive the outcome
             out.status = "denied" if ctx.user_denied else ("ok" if out.answer else "no_answer")
