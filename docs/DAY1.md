@@ -40,15 +40,17 @@ The MCP was built for chat. Chat supplies things the MCP takes for granted; the 
    connect, the model is offered the 59 Fusion tools plus the Skill tool and nothing else, and the skill is found.
 4. **Make the questions real.** Edit `scripts/day1_questions.txt` so each line has a true answer on your pod
    (supplier names, person numbers, periods). Keep the two `[refuse]` lines.
-5. **One question by hand.** `python scripts/day1_spike.py --runs haiku/native --approve ask --only 3`
+5. **Prove the skill is really loaded.** `python scripts/skill_check.py` (about one cent). The agent loads its Fusion skill
+   and recites the section titles; PASS means it had the file's content, not just the tool call.
+6. **One question by hand.** `python scripts/day1_spike.py --runs haiku/native --approve ask --only 3`
    Read the plan the agent proposes, approve it, and read the answer. Check the *tools* list in the result: the
    first call should be the Skill tool loading the planner skill.
-6. **The full run.** `python scripts/day1_spike.py`
+7. **The full run.** `python scripts/day1_spike.py`
    By default this runs every question with Haiku, loading the skill natively as chat does. To compare how the skill
    should reach the model, add `--runs haiku/native,haiku/inline,haiku/none`. Use `--effort low|medium|high` to trade
    cost for care. Plans are auto-approved and printed; `--approve ask` approves them yourself. Each run stops at the
    per-run cap.
-7. **Grade.** Open `data/day1/day1_results.md`, fill the *Quality 0-2* column, compare the variants (if you ran
+8. **Grade.** Open `data/day1/day1_results.md`, fill the *Quality 0-2* column, compare the variants (if you ran
    more than one), and pick the skill mode and the per-run cap (start from *Suggested cap*, then set `RUN_BUDGET_USD`).
 
 Cost of the default run: 10 questions with one variant = 10 runs. Per-question costs are unmeasured; a few percent of

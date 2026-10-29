@@ -14,12 +14,13 @@ bridge/demo.py           demo mode: a canned agent so Telegram can be tested wit
 bridge/state/db.py       SQLite: users, sessions, runs, plans, audit
 bridge/day1.py           Day 1 spike library (cost, turns, quality report)
 bridge/preflight.py      Day 1 preflight (key, model, MCP, pod login)
+bridge/auditview.py      what the bot asked Fusion, ids masked (scripts/audit_tail.py)
 vendor/ris-claude-gateway   the .mcpb, unzipped, untouched
 skill/                   the planner skill chat loads for this MCP, and where it came from
-scripts/                 day1_preflight, day1_spike, day1_questions.txt, telegram_smoke, telegram_ids, spike_live, check_mcp, add_user
+scripts/                 day1_preflight, day1_spike, day1_questions.txt, telegram_smoke, telegram_ids, audit_tail, spike_live, check_mcp, add_user
 docs/DAY1.md             the Day 1 runbook
 docs/DAY2.md             the Day 2 runbook: the Telegram side, testable before you have Oracle access
-tests/                   135 tests
+tests/                   192 tests
 ```
 
 ## Day 1 (start here)
