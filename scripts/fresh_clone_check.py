@@ -18,10 +18,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from bridge.config import ROOT                       # noqa: E402
-from bridge.repocheck import NotAGitRepo, ignored_but_present     # noqa: E402
+from bridge.repocheck import NotAGitRepo, ignored_but_present, uncommitted     # noqa: E402
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--run", action="store_true", help="export the last commit and start the real MCP from it")
+ap.add_argument("--keep", action="store_true", help="with --run: keep the exported folder and print where it is, so you can look inside")
 a = ap.parse_args()
 
 try:
@@ -34,9 +35,18 @@ for path, rule in bad:
 if bad:
     print("\nFIX: anchor or narrow the rule in .gitignore (for example write /data/ instead of data/), then `git add -A`.")
 status = 1 if bad else 0
+pending = uncommitted(ROOT)
+if pending:
+    print(f"\nNOT IN THE LAST COMMIT: {len(pending)} changed or new file(s). A clone, and the --run test below, only have what is committed:")
+    for p in pending[:15]:
+        print(f"  {p}")
+    print("  (M = changed, ?? = never added, A = added but not committed). Run `git add -A` and `git commit`, then run this again.")
+    status = 1
 
 if a.run:
-    with tempfile.TemporaryDirectory() as tmp:
+    tmp_root = tempfile.mkdtemp(prefix="freshclone_")
+    try:
+        tmp = tmp_root
         zpath = Path(tmp) / "head.zip"
         subprocess.run(["git", "archive", "--format=zip", "-o", str(zpath), "HEAD"], cwd=ROOT, check=True)
         out = Path(tmp) / "clone"
@@ -46,11 +56,18 @@ if a.run:
         env = {**os.environ, "RUN_MCP_TESTS": "1"}
         p = subprocess.run([sys.executable, "-m", "pytest", "tests/test_preflight.py", "-q", "-p", "no:cacheprovider", "-k", "real_bundle"],
                            cwd=out, env=env, capture_output=True, text=True, timeout=900)
-        tail = [ln for ln in (p.stdout + p.stderr).splitlines() if ln.strip()][-3:]
-        print("\n".join("  " + ln for ln in tail))
+        lines = [ln for ln in (p.stdout + p.stderr).splitlines() if ln.strip()]
+        print("\n".join("  " + ln for ln in (lines[-3:] if p.returncode == 0 else lines[-40:])))
         if p.returncode != 0:
-            print("\nFAIL: the MCP does not start from the committed files. Something it needs was not committed.")
+            print("\nFAIL: the committed files do not pass the real-MCP test. The error above says why; "
+                  "the usual cause is a file that was never committed.")
             status = 1
         else:
             print("\nPASS: the committed files start the real MCP.")
+        if a.keep:
+            print(f"\nKept the exported folder: {out}\nLook inside, or run: cd \"{out}\"; python -m pytest tests/test_preflight.py -q -k real_bundle")
+    finally:
+        if not a.keep:
+            import shutil
+            shutil.rmtree(tmp_root, ignore_errors=True)
 sys.exit(status)

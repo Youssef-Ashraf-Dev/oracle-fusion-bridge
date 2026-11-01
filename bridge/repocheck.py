@@ -21,6 +21,17 @@ def _git(root: Path, *args: str, stdin: str | None = None) -> str:
         raise NotAGitRepo(f"{root} is not a git repository, or git failed: {(e.stderr or '').strip()[:160]}") from e
 
 
+def uncommitted(root: Path) -> list[str]:
+    """Paths that are changed or new but not in the last commit (git status). The export used by --run tests only the commit."""
+    out = []
+    for line in _git(root, "status", "--porcelain", "--untracked-files=all").splitlines():
+        path = line[3:].strip().strip('"')
+        if path.startswith("data/") or path == ".env":
+            continue
+        out.append(f"{line[:2].strip() or '?'} {path}")
+    return out
+
+
 def ignored_but_present(root: Path) -> list[tuple[str, str]]:
     """(path, rule) for files on disk that git ignores and that are not the usual local-only things.
 

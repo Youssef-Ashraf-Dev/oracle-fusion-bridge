@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from bridge.repocheck import NotAGitRepo, ignored_but_present
+from bridge.repocheck import NotAGitRepo, ignored_but_present, uncommitted
 
 
 def make_repo(tmp_path, ignore: str):
@@ -51,3 +51,22 @@ def test_a_folder_that_is_not_a_repository_gets_a_clear_error_not_a_traceback(tm
     with pytest.raises(NotAGitRepo) as e:
         ignored_but_present(tmp_path)
     assert "not a git repository" in str(e.value)
+
+
+def test_files_that_were_never_committed_are_listed_but_local_data_and_env_are_not(tmp_path):
+    """A file that exists only in your folder works for you and is missing for everyone who clones."""
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.email", "t@t"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=tmp_path, check=True)
+    (tmp_path / "committed.py").write_text("a = 1\n")
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "one"], cwd=tmp_path, check=True)
+    assert uncommitted(tmp_path) == []
+    (tmp_path / "committed.py").write_text("a = 2\n")                          # changed
+    (tmp_path / "bridge").mkdir()
+    (tmp_path / "bridge" / "new_module.py").write_text("b = 1\n")             # never added
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "bridge.db").write_text("x")                           # local state: not reported
+    (tmp_path / ".env").write_text("SECRET=1")                                  # never reported
+    got = uncommitted(tmp_path)
+    assert sorted(got) == ["?? bridge/new_module.py", "M committed.py"]
