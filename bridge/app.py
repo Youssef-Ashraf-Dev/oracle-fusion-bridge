@@ -166,10 +166,12 @@ class Bridge:
         self.stopping = False                                  # set when the bot is shutting down
         self._running: dict[int, tuple[asyncio.Task, Channel]] = {}      # the question each user has in flight
 
-    async def begin_shutdown(self, grace_s: float = 5.0) -> int:
+    async def begin_shutdown(self, grace_s: Optional[float] = None) -> int:
         """Tell everyone with a question in flight that the bot is restarting, give those runs a moment to finish,
         then cancel the rest so their engine processes are stopped properly. Returns how many were in flight."""
         self.stopping = True
+        started = time.monotonic()
+        grace_s = self.s.shutdown_grace_s if grace_s is None else grace_s
         running = {uid: (t, ch) for uid, (t, ch) in self._running.items() if not t.done()}
         for uid, (_task, ch) in running.items():
             try:
@@ -182,7 +184,8 @@ class Bridge:
                 t.cancel()
             if pending:
                 await asyncio.gather(*pending, return_exceptions=True)
-            log.info("Shutdown: %d question(s) were in flight; %d had to be cancelled", len(running), len(pending))
+            log.info("Shutdown: %d question(s) were in flight; %d had to be cancelled; took %.1fs",
+                     len(running), len(pending), time.monotonic() - started)
         return len(running)
 
     async def handle(self, command: str, text: str, ch: Channel) -> None:

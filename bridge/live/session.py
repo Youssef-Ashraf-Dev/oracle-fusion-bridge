@@ -267,8 +267,10 @@ ClientFactory = Callable[[ClaudeAgentOptions], Any]
 
 class LiveRunner:
     def __init__(self, settings: Settings, db: Database, approver: Approver,
-                 client_factory: Optional[ClientFactory] = None, tick_s: float = 1.0, status_every_s: float = 10.0):
+                 client_factory: Optional[ClientFactory] = None, tick_s: float = 1.0, status_every_s: float = 10.0,
+                 disconnect_timeout_s: float = 4.0):
         self.status_every_s = status_every_s
+        self.disconnect_timeout_s = disconnect_timeout_s
         self.s, self.db, self.approver = settings, db, approver
         self.factory = client_factory or (lambda opts: ClaudeSDKClient(opts))
         self.tick_s = tick_s
@@ -374,8 +376,10 @@ class LiveRunner:
                         out.message = "; ".join(str(e) for e in (m.errors or [])) or "The agent run failed."
         finally:
             task.cancel()
-            try:
-                await client.disconnect()
+            try:                                               # stopping the engine must not hold up a shutdown for long
+                await asyncio.wait_for(client.disconnect(), self.disconnect_timeout_s)
+            except asyncio.TimeoutError:
+                log.warning("The engine did not stop within %.0fs; moving on", self.disconnect_timeout_s)
             except Exception:
                 pass
         out.duration_s = round(time.monotonic() - t0 - ctx.approval_seconds(), 2)     # time working, not time waiting for the tap

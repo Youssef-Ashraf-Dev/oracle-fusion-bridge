@@ -307,3 +307,38 @@ async def test_ctrl_c_and_termination_set_the_stop_event_instead_of_cancelling_a
             loop.remove_signal_handler(signal.SIGINT); loop.remove_signal_handler(signal.SIGTERM)
         except Exception:
             pass
+
+
+async def test_an_engine_that_will_not_stop_cannot_hold_up_a_shutdown(tmp_path, settings, caplog):
+    """Your retest took ten seconds: five of them were stopping the engine. Docker allows ten before it kills the bot."""
+    import logging, time as _t
+    class Stubborn(FakeSDK):
+        async def disconnect(self):
+            await asyncio.sleep(30)
+    async def never(c):
+        await asyncio.sleep(30)
+        yield result()
+    db = await Database(tmp_path / "t.db").open()
+    runner = LiveRunner(settings, db, yes, lambda o: Stubborn(o, never), tick_s=0.02, disconnect_timeout_s=0.3)
+    task = asyncio.create_task(runner.run(1, "q"))
+    await asyncio.sleep(0.2)
+    task.cancel()
+    t0 = _t.monotonic()
+    with caplog.at_level(logging.WARNING, logger="bridge.policy"):
+        await asyncio.gather(task, return_exceptions=True)
+    assert _t.monotonic() - t0 < 2.0
+    await db.close()
+
+
+async def test_the_shutdown_line_says_how_long_it_took(tmp_path, settings, caplog):
+    import logging
+    from tests.test_app_telegram import Sink, bridge as make_bridge
+    b, db, _ = await make_bridge(tmp_path, settings, delay=30)
+    task = asyncio.create_task(b.handle("ask", "slow", Sink().channel()))
+    await asyncio.sleep(0.2)
+    with caplog.at_level(logging.INFO, logger="bridge"):
+        await b.begin_shutdown()                                  # uses the configured grace period
+    await asyncio.gather(task, return_exceptions=True)
+    line = next(r.getMessage() for r in caplog.records if r.getMessage().startswith("Shutdown:"))
+    assert "1 question(s) were in flight" in line and "had to be cancelled; took " in line and line.endswith("s")
+    await db.close()

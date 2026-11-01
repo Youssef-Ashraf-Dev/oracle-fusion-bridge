@@ -231,6 +231,7 @@ def test_the_new_limits_and_cost_settings_have_defaults_and_come_from_the_enviro
     from bridge.config import Settings, load_settings
     d = Settings()
     assert (d.user_daily_runs, d.burst_runs, d.burst_minutes, d.show_cost, d.max_mcp_output_tokens) == (100, 20, 10, "all", 50000)
+    assert d.shutdown_grace_s == 3.0
     for k, v in (("USER_DAILY_RUNS", "0"), ("USER_BURST_RUNS", "5"), ("SHOW_COST", "Admin"), ("ADMIN_TELEGRAM_USER_IDS", "11, 22,abc,33")):
         monkeypatch.setenv(k, v)
     s = load_settings(env_file=None)

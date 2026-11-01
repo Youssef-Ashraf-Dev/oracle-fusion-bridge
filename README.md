@@ -24,7 +24,7 @@ scripts/                 day1_preflight, day1_spike, day1_questions.txt, telegra
 docs/DAY1.md             the Day 1 runbook
 docs/DAY2.md             the Day 2 runbook: the Telegram side, testable before you have Oracle access
 docs/DAY2_ACCEPTANCE.md  what "Day 2 finished" means: automatic checks, a Telegram walk-through, how to read the logs
-tests/                   336 tests
+tests/                   338 tests
 ```
 
 ## Everything in one command

@@ -37,6 +37,7 @@ class Settings:
     log_level: str = "INFO"
     log_questions: bool = False                   # log the first words of each question (off: questions may hold names)
     engine_dir: Path = Path("./data/engine")      # where the engine keeps its saved conversations (sensitive: they hold answers)
+    shutdown_grace_s: float = 3.0                 # on shutdown, how long running questions get to finish before they are cancelled
     session_idle_minutes: int = 120               # a conversation idle longer than this starts fresh; 0 = never
     max_mcp_output_tokens: int = 50000            # the engine's cap on one tool result; larger results become unreadable files
     db_path: Path = Path("./data/bridge.db")
@@ -185,6 +186,7 @@ def load_settings(env_file: str | Path | None = ".env") -> Settings:
         log_questions=_b("LOG_QUESTIONS"),
         recipes_path=recipes,
         session_idle_minutes=int(e("SESSION_IDLE_MINUTES", "120")),
+        shutdown_grace_s=float(e("SHUTDOWN_GRACE_S", "3")),
         max_mcp_output_tokens=int(e("MAX_MCP_OUTPUT_TOKENS", "50000")),
         mcp_dir=_abs(e("MCP_DIR", "./vendor/ris-claude-gateway")),
         planner_skill=_abs(skill) if skill else None,
