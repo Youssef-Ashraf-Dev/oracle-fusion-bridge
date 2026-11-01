@@ -1,0 +1,2 @@
+# Keep line endings consistent between Windows and Linux machines, so a file is not "changed" just by moving it.
+* text=auto

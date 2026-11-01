@@ -91,6 +91,7 @@ Start the bot with `python -m bridge.main` and watch its console. For each step,
 - [ ] Sections A, C and D above are ticked.
 - [ ] `python scripts/runs_report.py` after the walk-through shows no `error` runs except the ones you caused on purpose.
 - [ ] `python scripts/secret_scan.py` says CLEAN: no key, token or password in the files git would commit, nor in the logs and reports.
+- [ ] `python scripts/fresh_clone_check.py` finds nothing hidden, and after you commit, `python scripts/fresh_clone_check.py --run` says PASS: a fresh clone starts the real MCP.
 - [ ] The data owner has agreed that non-production data may be analysed by the model and shown in Telegram (NFR-12).
 - [ ] Any WARN left in section A has a reason written here: ______________________________
 

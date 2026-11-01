@@ -1,7 +1,5 @@
 .env
-data/
-data/engine/
-data/logs/
+/data/
 __pycache__/
 *.pyc
 .venv/

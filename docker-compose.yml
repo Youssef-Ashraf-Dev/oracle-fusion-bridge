@@ -6,3 +6,4 @@ services:
     volumes:
       - ./data:/app/data
     restart: unless-stopped
+    stop_grace_period: 30s          # the bot needs a few seconds to finish or cancel questions and stop its engine

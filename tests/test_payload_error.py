@@ -50,10 +50,10 @@ async def test_the_q4_case_a_double_wrapped_400_is_a_failure_not_a_data_call(tmp
 def test_long_http_errors_keep_the_failing_query_and_lose_the_boilerplate():
     from bridge.mcp_util import shorten_error
     raw = ("Error executing tool: Client error '400 Bad Request' for url "
-           "'https://iaehkf-dev1.fa.ocs.oraclecloud.com/fscmRestApi/resources/11.13.18.05/ledgersLOV?limit=50&onlyData=true&fields=LedgerName&q=Foo=1' "
+           "'https://dev-pod.example.com/fscmRestApi/resources/11.13.18.05/ledgersLOV?limit=50&onlyData=true&fields=LedgerName&q=Foo=1' "
            "For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400")
     out = shorten_error(raw)
-    assert "iaehkf-dev1" not in out and "11.13.18.05" not in out and "For more information" not in out and "mozilla" not in out
+    assert "dev-pod" not in out and "11.13.18.05" not in out and "For more information" not in out and "mozilla" not in out
     assert out.startswith("Error executing tool: Client error '400 Bad Request' for url '\u2026/ledgersLOV?limit=50&onlyData=true&fields=LedgerName&q=Foo=1'")
     hr = "Client error '404 Not Found' for url 'https://pod.example.com/hcmRestApi/resources/11.13.18.05/workers/123/child/x'"
     assert shorten_error(hr) == "Client error '404 Not Found' for url '\u2026/workers/123/child/x'"

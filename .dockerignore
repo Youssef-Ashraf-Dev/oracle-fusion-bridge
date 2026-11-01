@@ -1,8 +1,10 @@
 .env
-data/
-__pycache__/
-*.pyc
-.venv/
-.pytest_cache/
-vendor/**/.venv/
-vendor/**/audit/
+.git
+.venv
+**/.venv
+**/__pycache__
+.pytest_cache
+data
+vendor/**/audit
+tests
+docs

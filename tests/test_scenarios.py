@@ -11,7 +11,7 @@ from bridge.scenarios import (FAIL, PASS, WARN, Outcome, declined, plain_text, r
 from bridge.state.db import Database
 from tests.test_live import FakeSDK, result
 
-FOOTER = "\nPod iaehkf-dev1.example.com. Data as of 2026-10-29 11:40 UTC."
+FOOTER = "\nPod dev-pod.example.com. Data as of 2026-10-29 11:40 UTC."
 
 
 def by_id(sid):
@@ -38,7 +38,7 @@ def test_markdown_in_a_phone_answer_is_flagged():
 def test_the_as_of_line_needs_a_pod_host_and_a_date_in_any_language():
     assert as_of_line(out("3 invoices." + FOOTER)).status == PASS
     assert as_of_line(out("3 invoices.")).status == WARN
-    arabic = "يوجد دفتران.\nالمصدر: iaehkf-dev1.fa.ocs.oraclecloud.com، البيانات بتاريخ 2026-10-29 11:40"
+    arabic = "يوجد دفتران.\nالمصدر: dev-pod.example.com، البيانات بتاريخ 2026-10-29 11:40"
     assert as_of_line(out(arabic)).status == PASS                        # the words are translated, the host and digits are not
     assert as_of_line(out("Data as of today, from the pod.")).status == WARN
     assert "host missing" in as_of_line(out("done 2026-10-29")).detail and "date missing" in as_of_line(out("host a.b.c")).detail
@@ -152,7 +152,7 @@ async def test_the_arabic_scenario_needs_an_arabic_answer(tmp_path, settings):
         await ctx.propose_query_plan({"summary": "ledgers", "steps": [{"tool": "list_ledgers"}]})
         await c.options.can_use_tool(P.PREFIX + "list_ledgers", {}, SimpleNamespace(tool_use_id="A2"))
         yield UserMessage(content=[ToolResultBlock("A2", [{"type": "text", "text": "{}"}], False)])
-        yield result(0.01, text="يوجد 2 دفتر أستاذ في هذا النظام.\niaehkf-dev1.fa.ocs.oraclecloud.com 2026-10-29 11:40")
+        yield result(0.01, text="يوجد 2 دفتر أستاذ في هذا النظام.\ndev-pod.example.com 2026-10-29 11:40")
     assert (await run(tmp_path, settings, "S8", arabic))[0].status == PASS
 
 

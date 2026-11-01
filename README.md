@@ -20,11 +20,11 @@ bridge/banner.py         the startup banner; bridge/runsreport.py reads the bot'
 bridge/logsafe.py        redacted logging to the console and data/logs/bridge.log
 vendor/ris-claude-gateway   the .mcpb, unzipped, untouched
 skill/                   the planner skill chat loads for this MCP, and recipes.md: verified notes about this pod
-scripts/                 day1_preflight, day1_spike, day1_questions.txt, telegram_smoke, telegram_ids, audit_tail, runs_report, describe_probe, field_probe, secret_scan, spike_live, check_mcp, add_user
+scripts/                 day1_preflight, day1_spike, day1_questions.txt, telegram_smoke, telegram_ids, audit_tail, runs_report, describe_probe, field_probe, secret_scan, fresh_clone_check, spike_live, check_mcp, add_user
 docs/DAY1.md             the Day 1 runbook
 docs/DAY2.md             the Day 2 runbook: the Telegram side, testable before you have Oracle access
 docs/DAY2_ACCEPTANCE.md  what "Day 2 finished" means: automatic checks, a Telegram walk-through, how to read the logs
-tests/                   338 tests
+tests/                   343 tests
 ```
 
 ## Everything in one command
