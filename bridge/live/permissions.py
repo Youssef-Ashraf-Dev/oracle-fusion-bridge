@@ -110,7 +110,9 @@ def classify(tool_name: str, allow_sensitive: bool = False) -> Decision:
     if name in SENSITIVE:
         if allow_sensitive:
             return Decision("needs_plan")
-        return Decision("deny", f"{name}: personal and pay data is disabled for this POC")
+        return Decision("deny", f"{name} returns profile, pay or account details and is disabled for this POC. Worker NAMES are "
+                                "still available: use query_resource on the workers resource with fields PersonNumber,DisplayName. "
+                                "Pay, bank, ID-document and user-account data are not available")
     if name in UNUSED:
         return Decision("deny", f"{name}: not needed")
     return Decision("deny", f"{name}: not on the allowlist")

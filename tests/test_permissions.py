@@ -67,3 +67,10 @@ def test_sdk_preapproved_list_has_no_data_or_write_tools():
 ])
 def test_generic_readers_cannot_reach_pay_or_identity_resources(call, hit):
     assert P.touches_sensitive_resource(call) == hit
+
+
+def test_the_refusal_of_profile_tools_says_that_names_are_still_available():
+    for tool in ("find_worker", "get_worker_profile", "get_current_compensation"):
+        d = P.classify(P.PREFIX + tool)
+        assert d.verdict == "deny" and "names are" in d.reason.lower() and "PersonNumber,DisplayName" in d.reason
+        assert "Pay, bank, ID-document and user-account data are not available" in d.reason

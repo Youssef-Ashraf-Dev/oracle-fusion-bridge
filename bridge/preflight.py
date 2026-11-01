@@ -171,7 +171,7 @@ async def check_sdk(s: Settings, timeout: float = 240) -> list[Check]:
     client = None
     init: dict = {}
     try:
-        probe = dataclasses.replace(s, anthropic_api_key="sk-ant-preflight-no-credit")
+        probe = dataclasses.replace(s, anthropic_api_key="sk-ant-no-credit")
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             opts = build_options(probe, RunContext(probe, db, 0, approve), None)
@@ -220,6 +220,9 @@ async def check_sdk(s: Settings, timeout: float = 240) -> list[Check]:
     if s.effective_skill_mode == "native":
         from .live.skills import skill_name
         name = skill_name(s.planner_skill)
+        from .live.skills import valid_skill_name
+        out.append(Check("Skill name follows the lowercase-hyphen convention", PASS if valid_skill_name(name) else WARN,
+                         name if valid_skill_name(name) else f"{name}: use lowercase letters, digits and hyphens only (no capitals or underscores)"))
         out.append(Check(f"Planner skill {name} discovered (native, as in chat)", PASS if name in init.get("skills", []) else FAIL,
                          "listed in the CLI's startup report" if name in init.get("skills", []) else "not found under the runtime folder"))
     else:

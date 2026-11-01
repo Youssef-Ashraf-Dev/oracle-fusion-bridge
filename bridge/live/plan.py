@@ -38,6 +38,15 @@ class Plan:
         return "\n".join(lines)
 
 
+def _trim(text: str, limit: int) -> str:
+    """Cut at a word boundary and say so, so a note never ends mid-sentence."""
+    text = " ".join(text.split())
+    if len(text) <= limit:
+        return text
+    cut = text[:limit].rsplit(" ", 1)[0].rstrip(" ,;:(")
+    return cut + "\u2026"
+
+
 class PlanError(ValueError):
     pass
 
@@ -66,7 +75,7 @@ def parse_plan(raw: dict[str, Any], allow_sensitive: bool = False) -> Plan:
         if tool in P.GENERIC_READERS and not allow_sensitive and P.touches_sensitive_resource({"resource": res}):
             raise PlanError(f"step {i}: {res} holds pay or identity data, which is not available")
         steps.append(Step(tool=tool, resource=_norm(res) if res else None,
-                          note=str(s.get("note", ""))[:200]))
+                          note=_trim(str(s.get("note", "")), 300)))
     if not steps:
         raise PlanError("every step is a free tool (discovery or compute), which needs no approval: call them directly "
                         "and plan only the tools that return business rows")

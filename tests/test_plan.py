@@ -171,3 +171,14 @@ def test_successes_and_in_flight_calls_count_toward_the_data_call_limit():
     assert st.data_calls == MAX_DATA_CALLS
     st.finish("unknown-id", ok=True)                                   # an untracked id changes nothing
     assert st.data_calls == MAX_DATA_CALLS
+
+
+def test_long_plan_notes_end_at_a_word_with_an_ellipsis():
+    note = ("q: startDate >= 2025-01-01 and startDate <= 2025-12-31 and absenceType LIKE 'Sick%' "
+            "(if the pod rejects absenceType in q, drop that clause and filter by absenceType client-side), "
+            "then keep the ten rows with the highest entry ids and read their person numbers and dates. ") * 2
+    plan = parse_plan({"summary": "x", "steps": [{"tool": "query_resource", "resource": "absences", "note": note}]})
+    shown = plan.steps[0].note
+    assert shown.endswith("\u2026") and len(shown) <= 301 and not shown[:-1].endswith(" ") and "  " not in shown
+    short = parse_plan({"summary": "x", "steps": [{"tool": "query_resource", "resource": "absences", "note": "limit 25"}]})
+    assert short.steps[0].note == "limit 25"                                       # short notes are untouched
