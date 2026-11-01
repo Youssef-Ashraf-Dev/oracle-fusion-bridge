@@ -126,11 +126,24 @@ def build_application(token: str, bridge: Bridge, request=None) -> Application:
         builder = builder.request(request).get_updates_request(request)
     app = builder.build()
 
+    async def on_error(update, ctx: ContextTypes.DEFAULT_TYPE):
+        """Anything a handler did not catch: log it with its traceback (secrets blanked) and tell the user once."""
+        log.error("Unhandled error in a Telegram handler", exc_info=ctx.error)
+        chat = getattr(update, "effective_chat", None)
+        if chat is not None:
+            try:
+                await app.bot.send_message(chat.id, "Something went wrong. It has been logged.")
+            except Exception:
+                log.error("Could not send the error notice either")
+
+    app.add_error_handler(on_error)
+
     def cmd(name: str):
         async def h(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             if not update.effective_user or not update.effective_chat:
                 return
             text = " ".join(ctx.args or [])
+            log.info("message user=%s command=%s chars=%d", update.effective_user.id, name, len(text))
             try:
                 await bridge.handle(name, text, make_channel(app, update))
             except Exception:
@@ -144,7 +157,9 @@ def build_application(token: str, bridge: Bridge, request=None) -> Application:
     async def plain(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if update.effective_user and update.effective_chat and update.message and update.message.text:
             if await answer_waiting_plan(app, update.effective_user.id, update.message.text):
+                log.info("message user=%s command=plan-answer", update.effective_user.id)
                 return                                            # "yes" or "no" typed instead of tapping a button
+            log.info("message user=%s command=ask chars=%d", update.effective_user.id, len(update.message.text))
             try:
                 await bridge.handle("ask", update.message.text, make_channel(app, update))
             except Exception:
