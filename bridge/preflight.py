@@ -9,6 +9,7 @@ import asyncio
 import json
 import os
 import shutil
+from pathlib import Path
 import sys
 import urllib.error
 import urllib.request
@@ -42,11 +43,26 @@ def http_get(url: str, headers: dict) -> tuple[int, str]:
         return 0, f"{type(e).__name__}: {e}"
 
 
-def check_runtime(which: Callable[[str], Optional[str]] = shutil.which) -> list[Check]:
+def check_runtime(which: Callable[[str], Optional[str]] = shutil.which, requirements_path: Optional[Path] = None) -> list[Check]:
     ok = sys.version_info >= (3, 11)
-    return [Check("Python 3.11 or newer", PASS if ok else FAIL, sys.version.split()[0]),
-            Check("uv on PATH (launches the MCP)", PASS if which("uv") else FAIL,
-                  which("uv") or "install uv: https://docs.astral.sh/uv/")]
+    in_venv = sys.prefix != getattr(sys, "base_prefix", sys.prefix)
+    out = [Check("Python 3.11 or newer", PASS if ok else FAIL, sys.version.split()[0]),
+           Check("Virtual environment active", PASS if in_venv else WARN,
+                 sys.executable if in_venv else f"{sys.executable} is not a virtual environment. Activate the project's .venv "
+                 "(PowerShell: .\\.venv\\Scripts\\Activate.ps1   Git Bash: source .venv/Scripts/activate)"),
+           Check("uv on PATH (launches the MCP)", PASS if which("uv") else FAIL,
+                 which("uv") or "install uv: https://docs.astral.sh/uv/")]
+    from .config import ROOT
+    from .pins import check_pins, installed_versions
+    req = requirements_path or (ROOT / "requirements.txt")
+    if req.is_file():
+        problems = check_pins(req.read_text(encoding="utf-8"), installed_versions())
+        unpinned = [p for p in problems if "not pinned" in p]
+        out.append(Check("Dependencies pinned and matching", PASS if not problems else WARN,
+                         "every requirement is pinned and matches what is installed" if not problems else
+                         (f"{len(unpinned)} requirement(s) not pinned: run python scripts/pin_requirements.py --write" if unpinned
+                          else "; ".join(problems[:4]))))
+    return out
 
 
 def check_config(s: Settings) -> list[Check]:
