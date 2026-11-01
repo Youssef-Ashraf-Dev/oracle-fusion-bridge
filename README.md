@@ -15,13 +15,28 @@ bridge/state/db.py       SQLite: users, sessions, runs, plans, audit
 bridge/day1.py           Day 1 spike library (cost, turns, quality report)
 bridge/preflight.py      Day 1 preflight (key, model, MCP, pod login)
 bridge/auditview.py      what the bot asked Fusion, ids masked (scripts/audit_tail.py)
+bridge/scenarios.py      live regression scenarios drawn from what we hit (scripts/run_all.py)
+bridge/banner.py         the startup banner; bridge/runsreport.py reads the bot's own record (scripts/runs_report.py)
+bridge/logsafe.py        redacted logging to the console and data/logs/bridge.log
 vendor/ris-claude-gateway   the .mcpb, unzipped, untouched
-skill/                   the planner skill chat loads for this MCP, and where it came from
-scripts/                 day1_preflight, day1_spike, day1_questions.txt, telegram_smoke, telegram_ids, audit_tail, spike_live, check_mcp, add_user
+skill/                   the planner skill chat loads for this MCP, and recipes.md: verified notes about this pod
+scripts/                 day1_preflight, day1_spike, day1_questions.txt, telegram_smoke, telegram_ids, audit_tail, runs_report, describe_probe, field_probe, secret_scan, spike_live, check_mcp, add_user
 docs/DAY1.md             the Day 1 runbook
 docs/DAY2.md             the Day 2 runbook: the Telegram side, testable before you have Oracle access
-tests/                   192 tests
+docs/DAY2_ACCEPTANCE.md  what "Day 2 finished" means: automatic checks, a Telegram walk-through, how to read the logs
+tests/                   336 tests
 ```
+
+## Everything in one command
+```
+python scripts/run_all.py             # tests, preflight, skill check, 15 live scenarios, Telegram token (about 5-8 min, a few cents)
+python scripts/run_all.py --quick     # no model credit: tests, preflight, Telegram token
+python scripts/run_all.py --list      # the scenarios and what each one guards against
+python scripts/run_all.py --only S8 --repeat 5 --skip-tests   # run one scenario five times: the model is not deterministic
+```
+It prints PASS, WARN or FAIL per stage and exits 1 on any FAIL. The scenario report is `data/runall/scenarios.md`
+(checks and statistics only; answers are not saved unless you add `--keep-answers`). It ends with the few checks that
+need a person with Telegram.
 
 ## Day 1 (start here)
 Follow `docs/DAY1.md`:
