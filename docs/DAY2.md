@@ -30,9 +30,9 @@ Run only one copy of the bot at a time: Telegram allows one reader per token, an
 | --- | --- |
 | Type `/` in the chat | A menu: ask, new, usage, help |
 | `/help` | The short help text, saying the bot can only read |
-| `/usage` | `Your questions today: 0 of 25` and the budget line |
+| `/usage` | `Your questions today: 0 of 100` and, if you may see costs, the budget line |
 | Type `list open invoices` | `Working on it...`, then a plan with **Approve** and **Deny** buttons |
-| Tap **Approve** | The plan message ends with `Approved.`, then an answer starting `[Demo mode: ...]` and a footer like `($0.00, 1s)` |
+| Tap **Approve** | The plan message ends with `Approved.`, then an answer starting `[Demo mode: ...]` and a footer like `(Fresh from Fusion \u00b7 $0.000 \u00b7 1s)` |
 | Ask again and tap **Deny** | `Cancelled: the query plan wasn't approved, so nothing was read.` |
 | Ask and do not tap for 2 minutes | The plan message ends with `Expired.` and the run is cancelled; tapping the old button afterwards shows a pop-up saying it expired |
 | Type `show a long list` and approve | Several messages, about one per second, none cut off |

@@ -103,11 +103,135 @@ def test_origin_duplicates_and_shell_overrides_are_reported(tmp_path, monkeypatc
     assert C.env_conflicts(tmp_path / "missing.env") == []
 
 
-def test_the_session_settings_have_sensible_defaults_and_come_from_the_environment(monkeypatch):
+def test_the_session_settings_have_sensible_defaults_and_come_from_the_environment(monkeypatch, tmp_path):
+    from pathlib import Path
     from bridge.config import Settings, load_settings
     d = Settings()
     assert d.session_idle_minutes == 120 and str(d.engine_dir).replace("\\", "/").endswith("data/engine")
     monkeypatch.setenv("SESSION_IDLE_MINUTES", "45")
-    monkeypatch.setenv("ENGINE_DIR", "/tmp/somewhere")
+    monkeypatch.setenv("ENGINE_DIR", str(tmp_path / "engine"))
     s = load_settings(env_file=None)
-    assert s.session_idle_minutes == 45 and str(s.engine_dir).replace("\\", "/") == "/tmp/somewhere"
+    assert s.session_idle_minutes == 45 and Path(s.engine_dir) == tmp_path / "engine"
+
+
+def test_origin_says_whether_the_shell_value_hides_the_file(tmp_path, monkeypatch):
+    import bridge.config as C
+    f = tmp_path / ".env"
+    f.write_text("ORACLE_USERNAME=svc\nORACLE_PASSWORD=pw\n")
+    monkeypatch.setattr(C, "_FILE_KEYS", {})
+    monkeypatch.setenv("ORACLE_USERNAME", "svc")                      # the shell already holds the same value
+    monkeypatch.setenv("ORACLE_PASSWORD", "other")                    # ... and a different one here
+    monkeypatch.setenv("ONLY_IN_SHELL", "x")
+    assert "same value as .env, so nothing is overridden" in C.origin("ORACLE_USERNAME", f)
+    assert "OVERRIDES the different value" in C.origin("ORACLE_PASSWORD", f)
+    assert "does not set it" in C.origin("ONLY_IN_SHELL", f)
+    assert C.origin("NOT_ANYWHERE_XYZ", f) == "not set"
+
+
+def test_the_recipes_file_is_found_by_default_and_by_environment(tmp_path, monkeypatch):
+    import bridge.config as C
+    from bridge.config import load_settings
+    monkeypatch.setattr(C, "ROOT", tmp_path)
+    monkeypatch.delenv("RECIPES_PATH", raising=False)
+    assert load_settings(env_file=None).recipes_path is None                      # no file, no recipes
+    (tmp_path / "skill").mkdir()
+    (tmp_path / "skill" / "recipes.md").write_text("- a note")
+    assert str(load_settings(env_file=None).recipes_path).replace("\\", "/").endswith("skill/recipes.md")
+    monkeypatch.setenv("RECIPES_PATH", str(tmp_path / "other.md"))
+    assert load_settings(env_file=None).recipes_path == tmp_path / "other.md"
+
+
+def test_every_path_belongs_to_the_project_not_to_the_folder_the_bot_was_started_from(tmp_path, monkeypatch):
+    """Started from C:\\Windows\\System32 by a scheduler, or from a parent folder: the same db, .env and skill are used."""
+    import bridge.config as C
+    elsewhere = tmp_path / "somewhere" / "else"
+    elsewhere.mkdir(parents=True)
+    monkeypatch.chdir(elsewhere)
+    for k in ("DB_PATH", "MCP_DIR", "RUNTIME_DIR", "ENGINE_DIR", "LOG_DIR", "PLANNER_SKILL_PATH", "RECIPES_PATH"):
+        monkeypatch.delenv(k, raising=False)
+    s = C.load_settings(env_file=None)
+    for name in ("db_path", "mcp_dir", "runtime_dir", "engine_dir", "log_dir", "planner_skill", "recipes_path"):
+        p = getattr(s, name)
+        assert p is not None and p.is_absolute() and str(p).startswith(str(C.ROOT)), (name, p)
+    assert s.planner_skill.is_file() and s.recipes_path.is_file()
+    (C.ROOT / ".env.test-marker").write_text("TEST_MARKER_VALUE=from-project-root\n")
+    try:
+        monkeypatch.delenv("TEST_MARKER_VALUE", raising=False)
+        C.load_settings(env_file=".env.test-marker")                # a relative env file is looked up in the project folder
+        import os
+        assert os.environ["TEST_MARKER_VALUE"] == "from-project-root"
+    finally:
+        (C.ROOT / ".env.test-marker").unlink()
+        os.environ.pop("TEST_MARKER_VALUE", None)
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "elsewhere" / "bridge.db"))
+    assert C.load_settings(env_file=None).db_path == tmp_path / "elsewhere" / "bridge.db"       # absolute paths are kept as given
+
+
+def test_logging_survives_a_console_that_cannot_print_arabic(tmp_path):
+    import logging
+    from bridge.logsafe import configure_logging
+    root = logging.getLogger()
+    before = list(root.handlers)
+    for h in before:
+        root.removeHandler(h)
+    try:
+        configure_logging(logging.INFO, tmp_path / "logs")
+        logging.getLogger("bridge").info("question about \u062f\u0641\u0627\u062a\u0631 \u0627\u0644\u0623\u0633\u062a\u0627\u0630 \U0001F600")
+        for h in root.handlers:
+            h.flush()
+        assert "\u062f\u0641\u0627\u062a\u0631" in (tmp_path / "logs" / "bridge.log").read_text(encoding="utf-8")
+    finally:
+        for h in list(root.handlers):
+            root.removeHandler(h)
+            h.close()
+        for h in before:
+            root.addHandler(h)
+
+
+def test_a_printout_of_the_settings_never_shows_a_secret():
+    """A failing test, a traceback or a debug print shows the settings object. It leaked three secrets once."""
+    import dataclasses
+    from bridge.config import Settings
+    s = Settings(anthropic_api_key="sk-ant-usr-VERYSECRETKEYVALUE", telegram_token="1234567890:AAF-SecretTokenValueSecretTokenValue",
+                 oracle_user="Some.Integration", oracle_password="Sup3r@Secret2025", oracle_base_url="https://pod.example.com")
+    shown = repr(s) + str(s) + repr(dataclasses.replace(s, model="m")) + repr([s]) + f"{s!r}"
+    for secret in ("sk-ant-usr", "VERYSECRET", "AAF-Secret", "Sup3r@Secret2025", "Some.Integration"):
+        assert secret not in shown, secret
+    assert "pod.example.com" in shown and "model=" in shown                    # the harmless settings are still visible
+    assert s.oracle_password == "Sup3r@Secret2025"                              # and the values still work
+    from bridge.live.session import RunContext
+    assert "Sup3r@Secret2025" not in repr(RunContext(s, None, 1, None))        # nor through an object that holds the settings
+
+
+def test_a_renamed_skill_does_not_leave_its_old_folder_behind(tmp_path):
+    from bridge.live.skills import prepare_runtime, skill_name
+    skills = tmp_path / "rt" / ".claude" / "skills"
+    old = skills / "RIS_Fusion_Gateway-Skill"
+    old.mkdir(parents=True)
+    (old / "SKILL.md").write_text("OLD CONTENT")
+    (skills / "stray-file.txt").write_text("not a folder")
+    f = tmp_path / "SKILL.md"
+    f.write_text('---\nname: ris-fusion-gateway-skill\ndescription: d\n---\nNEW CONTENT')
+    prepare_runtime(f, tmp_path / "rt")
+    assert sorted(p.name for p in skills.iterdir() if p.is_dir()) == ["ris-fusion-gateway-skill"]
+    assert (skills / "ris-fusion-gateway-skill" / "SKILL.md").read_text().endswith("NEW CONTENT")
+    assert (skills / "stray-file.txt").exists()                                  # only folders are cleaned
+    prepare_runtime(f, tmp_path / "rt")                                          # running it twice changes nothing
+    assert sorted(p.name for p in skills.iterdir() if p.is_dir()) == ["ris-fusion-gateway-skill"]
+
+
+def test_the_skill_name_convention():
+    from bridge.live.skills import valid_skill_name
+    assert valid_skill_name("ris-fusion-gateway-skill") and valid_skill_name("planner2")
+    for bad in ("RIS_Fusion_Gateway-Skill", "ris_fusion_gateway-skill", "Ris-Fusion", "-lead", "trail-", "two--hyphens", "a" * 65, ""):
+        assert not valid_skill_name(bad), bad
+
+
+def test_the_new_limits_and_cost_settings_have_defaults_and_come_from_the_environment(monkeypatch):
+    from bridge.config import Settings, load_settings
+    d = Settings()
+    assert (d.user_daily_runs, d.burst_runs, d.burst_minutes, d.show_cost, d.max_mcp_output_tokens) == (100, 20, 10, "all", 50000)
+    for k, v in (("USER_DAILY_RUNS", "0"), ("USER_BURST_RUNS", "5"), ("SHOW_COST", "Admin"), ("ADMIN_TELEGRAM_USER_IDS", "11, 22,abc,33")):
+        monkeypatch.setenv(k, v)
+    s = load_settings(env_file=None)
+    assert (s.user_daily_runs, s.burst_runs, s.show_cost) == (0, 5, "admin") and s.admin_ids == frozenset({11, 22, 33})

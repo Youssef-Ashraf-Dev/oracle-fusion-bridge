@@ -27,13 +27,24 @@ def skill_body(skill_md: Path) -> str:
     return text.split("---", 2)[-1].strip() if text.startswith("---") else text
 
 
+def valid_skill_name(name: str) -> bool:
+    """The convention for skill names: lowercase letters, digits and single hyphens, at most 64 characters."""
+    return bool(re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", name)) and len(name) <= 64
+
+
 def prepare_runtime(skill_md: Path, runtime_dir: Path) -> Path:
     """Create <runtime_dir>/.claude/skills/<name>/SKILL.md (a copy) and return runtime_dir.
 
-    The folder holds nothing else, so loading project settings from it cannot pull in anything unexpected.
+    The folder holds nothing else, so loading project settings from it cannot pull in anything unexpected. Folders left
+    by an earlier name or an earlier file are removed: a renamed skill must not leave its old self behind.
     """
     name = skill_name(skill_md)
-    target = Path(runtime_dir) / ".claude" / "skills" / name
+    skills_dir = Path(runtime_dir) / ".claude" / "skills"
+    if skills_dir.is_dir():
+        for child in skills_dir.iterdir():
+            if child.is_dir() and child.name != name:
+                shutil.rmtree(child, ignore_errors=True)
+    target = skills_dir / name
     target.mkdir(parents=True, exist_ok=True)
     dest = target / "SKILL.md"
     if not dest.exists() or dest.read_bytes() != Path(skill_md).read_bytes():

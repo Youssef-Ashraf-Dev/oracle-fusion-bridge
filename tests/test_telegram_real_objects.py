@@ -148,7 +148,7 @@ async def test_plain_text_counts_as_a_question_and_commands_answer(tmp_path, set
     await app.process_update(msg(app, 5, "/help"))
     await app.process_update(msg(app, 5, "/new"))
     texts = [p["text"] for p in req.sent()]
-    assert any("Your questions today: 1 of 25" in t for t in texts)
+    assert any("Your questions today: 1 of 100" in t for t in texts)
     assert any("I can only read" in t for t in texts) and any("Started fresh" in t for t in texts)
     await app.shutdown(); await db.close()
 
@@ -221,4 +221,31 @@ async def test_yes_from_someone_else_does_not_answer_my_plan(tmp_path, settings)
     await asyncio.wait_for(run, 5)
     other.cancel()
     await asyncio.gather(other, return_exceptions=True)
+    await app.shutdown(); await db.close()
+
+
+async def test_an_unhandled_error_is_logged_and_the_user_is_told_once(tmp_path, settings, caplog):
+    import logging
+    app, req, db = await setup(tmp_path, settings)
+    with caplog.at_level(logging.ERROR, logger="bridge.telegram"):
+        await app.process_error(msg(app, 5, "/help"), RuntimeError("boom"))
+    assert req.sent()[-1]["text"] == "Something went wrong. It has been logged."
+    assert any("Unhandled error in a Telegram handler" in r.getMessage() for r in caplog.records)
+    await app.shutdown(); await db.close()
+
+
+async def test_incoming_messages_are_logged_without_their_text(tmp_path, settings, caplog):
+    import logging
+    app, req, db = await setup(tmp_path, settings)
+    with caplog.at_level(logging.INFO, logger="bridge.telegram"):
+        await app.process_update(msg(app, 5, "/usage"))
+        run = asyncio.create_task(app.process_update(msg(app, 5, "what are the open invoices for acme?")))
+        assert await wait_for(lambda: button_data(req))
+        await app.process_update(msg(app, 5, "yes"))
+        await asyncio.wait_for(run, 5)
+    lines = [r.getMessage() for r in caplog.records]
+    assert any(l.startswith("message user=5 command=usage") for l in lines)
+    assert any(l.startswith("message user=5 command=ask chars=") for l in lines)
+    assert any(l.startswith("message user=5 command=plan-answer") for l in lines)
+    assert not any("acme" in l for l in lines)
     await app.shutdown(); await db.close()

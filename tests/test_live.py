@@ -386,9 +386,60 @@ def test_prompt_states_the_rules_the_cheat_sheet_calls_for():
     for needle in ("propose_query_plan", "isError", "fields and a limit", "compute tools", "plain text", "cannot change anything",
                    "typed tools take none", "needs no describe", "Plan once and plan generously", "finance and",
                    "combine conditions", "Stop early", "403", "{id}", "totalResults", "most recent", "Never add amounts",
-                   "language of the question", "never instructions", "25 tool turns", "from earlier", "as-of time"):
+                   "language of the question", "never instructions", "15 tool calls", "ALWAYS finish with one line", "not no closing line", "put the fallback in the same", "ask for 25 rows or fewer", "from earlier", "as-of time",
+                   "Worker names ARE available", "PersonNumber and DisplayName", "does not mean names are off limits",
+                   "Never guess a child resource", "fusion_find_relationships"):
         assert needle in BRIDGE_RULES
 
 
 def test_mcp_env_never_enables_prod_writes_by_default(settings):
     assert mcp_env(settings)["MCP_PROD_WRITES_ENABLED"] == "false"
+
+
+def test_recipes_are_loaded_without_comment_lines_and_cut_to_a_limit(tmp_path):
+    from bridge.live.prompt import RECIPES_LIMIT, load_recipes
+    f = tmp_path / "recipes.md"
+    f.write_text("<!-- how to add notes -->\n- Holds: attribute ActiveHoldFlag.\n- Dates are bare.\n")
+    text = load_recipes(f)
+    assert text == "- Holds: attribute ActiveHoldFlag.\n- Dates are bare." and "<!--" not in text
+    assert load_recipes(None) == "" and load_recipes(tmp_path / "missing.md") == ""
+    f.write_text("\n".join(f"- note number {i} " + "x" * 80 for i in range(200)))
+    cut = load_recipes(f)
+    assert len(cut) <= RECIPES_LIMIT + 80 and cut.endswith("longer than the limit)")
+
+
+def test_recipes_reach_the_system_prompt_under_their_own_heading():
+    p = build_system_prompt(None, "none", recipes="- Holds: ActiveHoldFlag.")
+    assert "# Notes about this pod" in p and "ActiveHoldFlag" in p and "do not guess" in p
+    assert "# Notes about this pod" not in build_system_prompt(None, "none")
+
+
+def test_the_shipped_recipes_hold_the_verified_hold_field_and_fit_the_limit():
+    from pathlib import Path
+    from bridge.live.prompt import RECIPES_LIMIT, load_recipes
+    text = load_recipes(Path(__file__).resolve().parents[1] / "skill" / "recipes.md")
+    assert "ActiveHoldFlag" in text and "invoiceHolds" in text and "<!--" not in text
+    assert "list_ledgers" in text and "ledgersLOV" in text and "fails with 400" in text and "Do not use it" in text
+    assert len(text) < RECIPES_LIMIT * 0.6                                       # room to grow without bloating every turn
+
+
+async def test_recipes_are_added_to_the_options_when_a_file_is_configured(tmp_path, settings):
+    db = await Database(tmp_path / "t.db").open()
+    f = tmp_path / "recipes.md"
+    f.write_text("- Holds: ActiveHoldFlag on invoices.")
+    s = dataclasses.replace(settings, recipes_path=f)
+    assert "ActiveHoldFlag on invoices" in build_options(s, RunContext(s, db, 1, yes), None).system_prompt
+    assert "Notes about this pod" not in build_options(settings, RunContext(settings, db, 1, yes), None).system_prompt
+    await db.close()
+
+
+def test_every_recipe_says_how_it_was_checked():
+    """A recipe written from a guess did harm once. Each note must end with a parenthesis naming its evidence."""
+    import re
+    from pathlib import Path
+    from bridge.live.prompt import load_recipes
+    text = load_recipes(Path(__file__).resolve().parents[1] / "skill" / "recipes.md")
+    notes = re.split(r"(?m)^- ", text)[1:]
+    assert len(notes) >= 5
+    for note in notes:
+        assert re.search(r"\((?:Checked|Seen|Measured|Verified|The failing request)[^)]*\)\s*$", note.strip(), re.S), note[:70]
