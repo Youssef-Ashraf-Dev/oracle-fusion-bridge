@@ -46,7 +46,7 @@ class DemoRunner:
         self.pause_s, self.slow_s, self.status_every_s = pause_s, slow_s, status_every_s
 
     async def run(self, user_id: int, question: str, resume: Optional[str] = None,
-                  on_status: Optional[StatusFn] = None) -> LiveResult:
+                  on_status: Optional[StatusFn] = None, prior_cost: float = 0.0) -> LiveResult:
         t0 = time.monotonic()
         res = LiveResult(session_id=resume or f"demo-{uuid.uuid4().hex[:8]}")
         q = question.lower()

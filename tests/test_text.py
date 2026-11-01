@@ -38,3 +38,13 @@ def test_never_exceeds_limit(limit):
 def test_fusion_hint_is_plain_language(err, needle):
     assert needle in fusion_hint([err])
     assert fusion_hint([]) == ""
+
+
+def test_splitting_counts_utf16_units_like_telegram_does_so_emoji_never_overflow():
+    from bridge.app import _u16
+    text = "😀" * 3000                                              # 3000 characters, 6000 UTF-16 units
+    pieces = split_message(text, 4000)
+    assert len(pieces) >= 2 and all(_u16(p) <= 4000 for p in pieces) and "".join(pieces) == text
+    mixed = "\n".join("مرحبا 😀 " + "x" * 90 for _ in range(200))
+    assert all(_u16(p) <= 4000 for p in split_message(mixed, 4000))
+    assert _u16("😀") == 2 and _u16("a") == 1 and _u16("م") == 1

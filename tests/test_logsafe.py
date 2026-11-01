@@ -3,13 +3,13 @@ import logging
 
 from bridge.logsafe import RedactSecrets, configure_logging, redact
 
-TOKEN = "REMOVED-TOKEN"
+TOKEN = "1234567890:AAFake-Token_For_Tests_Only_0123456789ab"
 
 
 def test_telegram_tokens_and_api_keys_are_blanked():
     url = f"HTTP Request: POST https://api.telegram.org/bot{TOKEN}/getMe \"HTTP/1.1 200 OK\""
     out = redact(url)
-    assert TOKEN not in out and "REMOVED-FRAGMENT" not in out and "/bot<telegram-token>/getMe" in out
+    assert TOKEN not in out and "AAFake-Token" not in out and "/bot<telegram-token>/getMe" in out
     assert redact("key sk-ant-api03-abcdefghijklmnop failed") == "key <anthropic-key> failed"
     assert redact("an ordinary line with 12:30 and 2026-10-29") == "an ordinary line with 12:30 and 2026-10-29"
     assert redact("") == ""

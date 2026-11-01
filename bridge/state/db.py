@@ -12,11 +12,11 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS users(
   telegram_id INTEGER PRIMARY KEY, name TEXT NOT NULL DEFAULT '', active INTEGER NOT NULL DEFAULT 1);
 CREATE TABLE IF NOT EXISTS chats(
-  chat_id INTEGER PRIMARY KEY, live_session_id TEXT, updated REAL);
+  chat_id INTEGER PRIMARY KEY, live_session_id TEXT, updated REAL, session_cost REAL NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS runs(
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, user_id INTEGER NOT NULL,
   kind TEXT NOT NULL, status TEXT NOT NULL, cost_usd REAL NOT NULL DEFAULT 0,
-  duration_s REAL NOT NULL DEFAULT 0, detail TEXT NOT NULL DEFAULT '');
+  duration_s REAL NOT NULL DEFAULT 0, detail TEXT NOT NULL DEFAULT '', meta TEXT NOT NULL DEFAULT '{}');
 CREATE TABLE IF NOT EXISTS plans(
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, run_id INTEGER, user_id INTEGER NOT NULL,
   plan_json TEXT NOT NULL, decision TEXT NOT NULL, decided_by INTEGER, decided_ts REAL);
@@ -39,6 +39,12 @@ class Database:
         self._db.row_factory = aiosqlite.Row
         await self._db.execute("PRAGMA journal_mode=WAL")
         await self._db.executescript(SCHEMA)
+        cols = [r["name"] for r in await (await self._db.execute("PRAGMA table_info(runs)")).fetchall()]
+        if "meta" not in cols:                                   # a database made before run details existed
+            await self._db.execute("ALTER TABLE runs ADD COLUMN meta TEXT NOT NULL DEFAULT '{}'")
+        chat_cols = [r["name"] for r in await (await self._db.execute("PRAGMA table_info(chats)")).fetchall()]
+        if "session_cost" not in chat_cols:                      # a database made before the running cost was kept
+            await self._db.execute("ALTER TABLE chats ADD COLUMN session_cost REAL NOT NULL DEFAULT 0")
         await self._db.commit()
         return self
 
@@ -69,11 +75,13 @@ class Database:
         row = await cur.fetchone()
         return dict(row) if row else {"chat_id": chat_id, "live_session_id": None}
 
-    async def set_live_session(self, chat_id: int, session_id: Optional[str]) -> None:
+    async def set_live_session(self, chat_id: int, session_id: Optional[str], session_cost: float = 0.0) -> None:
+        """Remember the chat's session and the running cost the engine reported for it (it reports the conversation's total)."""
         await self.db.execute(
-            "INSERT INTO chats(chat_id,live_session_id,updated) VALUES(?,?,?) "
-            "ON CONFLICT(chat_id) DO UPDATE SET live_session_id=excluded.live_session_id, updated=excluded.updated",
-            (chat_id, session_id, time.time()))
+            "INSERT INTO chats(chat_id,live_session_id,updated,session_cost) VALUES(?,?,?,?) "
+            "ON CONFLICT(chat_id) DO UPDATE SET live_session_id=excluded.live_session_id, updated=excluded.updated, "
+            "session_cost=excluded.session_cost",
+            (chat_id, session_id, time.time(), session_cost))
         await self.db.commit()
 
     async def reset_chat(self, chat_id: int) -> None:
@@ -82,12 +90,18 @@ class Database:
 
     # -- runs, usage (FR-08, FR-09) ---------------------------------------
     async def record_run(self, user_id: int, kind: str, status: str, cost_usd: float,
-                         duration_s: float, detail: str = "") -> int:
+                         duration_s: float, detail: str = "", meta: Optional[dict] = None) -> int:
         cur = await self.db.execute(
-            "INSERT INTO runs(ts,user_id,kind,status,cost_usd,duration_s,detail) VALUES(?,?,?,?,?,?,?)",
-            (time.time(), user_id, kind, status, cost_usd, duration_s, detail[:500]))
+            "INSERT INTO runs(ts,user_id,kind,status,cost_usd,duration_s,detail,meta) VALUES(?,?,?,?,?,?,?,?)",
+            (time.time(), user_id, kind, status, cost_usd, duration_s, detail[:500], json.dumps(meta or {}, default=str)[:4000]))
         await self.db.commit()
         return int(cur.lastrowid)
+
+    async def runs_since(self, user_id: int, seconds: float) -> int:
+        """Questions this user has asked in the last `seconds`."""
+        cur = await self.db.execute("SELECT COUNT(*) c FROM runs WHERE user_id=? AND kind='ask' AND ts>?",
+                                    (user_id, time.time() - seconds))
+        return int((await cur.fetchone())["c"])
 
     async def runs_today(self, user_id: int) -> int:
         start = time.time() - (time.time() % 86400)

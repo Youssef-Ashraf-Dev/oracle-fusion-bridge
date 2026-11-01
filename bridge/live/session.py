@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Optional
@@ -18,10 +20,11 @@ from claude_agent_sdk import (AssistantMessage, ClaudeAgentOptions, ClaudeSDKCli
 import warnings
 
 from ..config import Settings
+from ..mcp_util import payload_error, shorten_error
 from ..state.db import Database
 from . import permissions as P
 from .plan import Approver, PlanError, PlanState, parse_plan
-from .prompt import build_system_prompt
+from .prompt import build_system_prompt, load_recipes
 from .skills import prepare_runtime, skill_name
 
 try:    # By design the discovery and compute tools are pre-approved, so the callback is shadowed for them.
@@ -29,6 +32,17 @@ try:    # By design the discovery and compute tools are pre-approved, so the cal
     warnings.filterwarnings("ignore", category=CanUseToolShadowedWarning)
 except ImportError:
     pass
+
+log = logging.getLogger("bridge.policy")
+_CUT = re.compile(r"(?i)(exceeds? (the )?maximum allowed|exceed|too large|too long|truncat|saved (to|in)|has been saved|written to|tool-results)")
+
+
+def looks_cut(body: str) -> bool:
+    """A short result that talks about size or a saved file: the engine replaced a too-large result with a note."""
+    if body.lstrip().startswith(("{", "[")):                 # a JSON payload is a real result, whatever words it contains
+        return False
+    return len(body) < 1200 and bool(_CUT.search(body))
+
 
 BUILTIN_TOOLS = ["Bash", "BashOutput", "KillShell", "Read", "Write", "Edit", "MultiEdit", "NotebookEdit",
                  "Glob", "Grep", "WebFetch", "WebSearch", "Task", "TodoWrite", "SlashCommand", "ExitPlanMode"]
@@ -63,6 +77,12 @@ class LiveResult:
     tool_errors: list[str] = field(default_factory=list)      # failures seen in tool results
     usage: dict = field(default_factory=dict)                 # token counts reported by the SDK
     message: str = ""
+    error_kind: str = ""             # the engine's own label: billing_error, authentication_failed, rate_limit, ...
+    api_status: Optional[int] = None
+    engine_lines: list[str] = field(default_factory=list)     # the last lines the engine wrote to stderr
+    session_cost_total: float = 0.0  # the engine's running total for the whole conversation (cost_usd is this question only)
+    plans: int = 0                   # plans shown to the user in this run
+    results_cut: int = 0             # tool results the engine replaced with a note because they were too large
 
 
 @dataclass
@@ -77,12 +97,15 @@ class RunContext:
     waiting_since: Optional[float] = None      # set while a plan is awaiting the user
     user_denied: bool = False
     skill: str = ""                            # the one skill the agent may load (native mode)
+    plans_proposed: int = 0
+    engine_lines: list = field(default_factory=list)
 
     async def propose_query_plan(self, args: dict[str, Any]) -> tuple[str, bool]:
         try:
             plan = parse_plan(args, self.settings.allow_hcm_sensitive)
         except PlanError as e:
             return f"Plan rejected: {e}. Fix it and propose again.", True
+        self.plans_proposed += 1
         self.waiting_since = time.monotonic()
         try:
             ok = await asyncio.wait_for(self.approver(plan), self.settings.approval_timeout_s)
@@ -106,6 +129,11 @@ class RunContext:
         live = (time.monotonic() - self.waiting_since) if self.waiting_since is not None else 0.0
         return self.approval_wait + live
 
+    async def _deny(self, tool_name: str, tool_input: dict[str, Any], why: str):
+        await self.db.audit(self.user_id, "tool_denied", f"{tool_name} {_short(tool_input)} :: {why}")
+        log.info("deny user=%s tool=%s reason=%s", self.user_id, P.bare(tool_name), why[:200])
+        return PermissionResultDeny(message=why)
+
     async def can_use_tool(self, tool_name: str, tool_input: dict[str, Any], _ctx: Any = None):
         if self.user_denied:
             return PermissionResultDeny(message="The user declined; stop.", interrupt=True)
@@ -113,28 +141,23 @@ class RunContext:
             if self.skill and any(self.skill in str(v) for v in tool_input.values()):
                 return PermissionResultAllow(updated_input=tool_input)
             await self.db.audit(self.user_id, "tool_denied", f"Skill {_short(tool_input)} :: only {self.skill or 'none'} may be loaded")
+            log.info("deny user=%s tool=Skill reason=only %s may be loaded", self.user_id, self.skill or "none")
             return PermissionResultDeny(message=f"Only the {self.skill} skill is available.")
         d = P.classify(tool_name, self.settings.allow_hcm_sensitive)
         if d.verdict == "deny":
-            await self.db.audit(self.user_id, "tool_denied", f"{tool_name} {_short(tool_input)} :: {d.reason}")
-            return PermissionResultDeny(message=d.reason)
+            return await self._deny(tool_name, tool_input, d.reason)
         if d.verdict == "needs_plan" and P.bare(tool_name) in P.GENERIC_READERS and not self.settings.allow_hcm_sensitive:
             hit = P.touches_sensitive_resource(tool_input)
             if hit:
-                why = f"{hit} holds pay or identity data, which is not available"
-                await self.db.audit(self.user_id, "tool_denied", f"{tool_name} {_short(tool_input)} :: {why}")
-                return PermissionResultDeny(message=why)
+                return await self._deny(tool_name, tool_input, f"{hit} holds pay or identity data, which is not available")
         if d.verdict == "needs_plan":
             limit = tool_input.get("limit")
             if isinstance(limit, (int, float)) and limit > self.settings.max_rows_per_call:
-                why = (f"limit {int(limit)} is too large: use {self.settings.max_rows_per_call} or less and page with offset, "
-                       "or filter harder")
-                await self.db.audit(self.user_id, "tool_denied", f"{tool_name} {_short(tool_input)} :: {why}")
-                return PermissionResultDeny(message=why)
+                return await self._deny(tool_name, tool_input, f"limit {int(limit)} is too large: use "
+                                        f"{self.settings.max_rows_per_call} or less and page with offset, or filter harder")
             ok, why = self.state.covers(tool_name, tool_input)
             if not ok:
-                await self.db.audit(self.user_id, "tool_denied", f"{tool_name} {_short(tool_input)} :: {why}")
-                return PermissionResultDeny(message=why)
+                return await self._deny(tool_name, tool_input, why)
             call_id = getattr(_ctx, "tool_use_id", None)
             if call_id:
                 self.state.start(call_id)                  # counted when its result arrives, and only if it succeeded
@@ -152,7 +175,7 @@ def _result(text: str, is_error: bool) -> dict[str, Any]:
     return {"content": [{"type": "text", "text": text}], "is_error": is_error}
 
 
-def build_options(s: Settings, ctx: RunContext, resume: Optional[str]) -> ClaudeAgentOptions:
+def build_options(s: Settings, ctx: RunContext, resume: Optional[str], prior_cost: float = 0.0) -> ClaudeAgentOptions:
     @tool("propose_query_plan", "Propose the data calls you need; the user approves once. Required before any data tool.",
           {"type": "object", "required": ["summary", "steps"], "properties": {
               "summary": {"type": "string"},
@@ -181,13 +204,13 @@ def build_options(s: Settings, ctx: RunContext, resume: Optional[str]) -> Claude
         kw["effort"] = s.effort
     return ClaudeAgentOptions(
         model=s.model,
-        system_prompt=build_system_prompt(s.planner_skill, mode, name),
+        system_prompt=build_system_prompt(s.planner_skill, mode, name, recipes=load_recipes(s.recipes_path)),
         disallowed_tools=BUILTIN_TOOLS,
         allowed_tools=P.sdk_allowed_tools(s.allow_hcm_sensitive),
         mcp_servers={P.SERVER: fusion, P.BRIDGE_SERVER: bridge},
         strict_mcp_config=True,
         permission_mode="default", can_use_tool=ctx.can_use_tool,
-        max_budget_usd=s.run_budget_usd, max_turns=s.max_turns,
+        max_budget_usd=s.run_budget_usd + prior_cost, max_turns=s.max_turns,      # the engine counts the whole conversation
         env={"ANTHROPIC_API_KEY": s.anthropic_api_key,
              # Chat loads every tool up front. The engine defers tools behind a search tool by default, which
              # needs a built-in tool we do not enable and is unsupported on Haiku models.
@@ -199,8 +222,21 @@ def build_options(s: Settings, ctx: RunContext, resume: Optional[str]) -> Claude
              "DISABLE_ERROR_REPORTING": "1", "DISABLE_AUTOUPDATER": "1",
              # Keep the engine's saved conversations inside the bot's own data folder, not in the user profile.
              "CLAUDE_CONFIG_DIR": str(s.engine_dir.resolve())},
-        resume=resume, **kw,
+        stderr=_stderr_sink(ctx), resume=resume, **kw,
     )
+
+
+def _stderr_sink(ctx: "RunContext"):
+    """Keep the engine's own error lines: they say why a run failed before any message arrived."""
+    elog = logging.getLogger("bridge.engine")
+
+    def sink(line: str) -> None:
+        line = line.rstrip()
+        if line:
+            ctx.engine_lines.append(line[:300])
+            del ctx.engine_lines[:-20]
+            elog.warning("engine: %s", line[:300])
+    return sink
 
 
 def _tool_result_texts(block: ToolResultBlock) -> str:
@@ -239,11 +275,11 @@ class LiveRunner:
         self.last_ctx: Optional[RunContext] = None
 
     async def run(self, user_id: int, question: str, resume: Optional[str] = None,
-                  on_status: Optional[StatusFn] = None) -> LiveResult:
+                  on_status: Optional[StatusFn] = None, prior_cost: float = 0.0) -> LiveResult:
         ctx = self.last_ctx = RunContext(self.s, self.db, user_id, self.approver)
         out = LiveResult()
         t0 = time.monotonic()
-        client = self.factory(build_options(self.s, ctx, resume))
+        client = self.factory(build_options(self.s, ctx, resume, prior_cost))
         queue: asyncio.Queue = asyncio.Queue()
 
         async def pump():
@@ -271,6 +307,20 @@ class LiveRunner:
                         await client.interrupt()
                     except Exception:
                         pass
+                    deadline = time.monotonic() + 5            # the engine reports its cost when it stops: wait briefly for it
+                    while time.monotonic() < deadline:
+                        try:
+                            late = await asyncio.wait_for(queue.get(), 0.5)
+                        except asyncio.TimeoutError:
+                            continue
+                        if late is None or isinstance(late, Exception):
+                            break
+                        if isinstance(late, ResultMessage):
+                            out.cost_usd = float(late.total_cost_usd or 0.0)
+                            out.turns = late.num_turns
+                            out.usage = dict(late.usage or {})
+                            out.session_id = late.session_id or out.session_id
+                            break
                     break
                 try:
                     m = await asyncio.wait_for(queue.get(), self.tick_s)
@@ -285,6 +335,8 @@ class LiveRunner:
                     out.status, out.message = "error", f"{type(m).__name__}: {m}"
                     break
                 if isinstance(m, AssistantMessage):
+                    if getattr(m, "error", None):
+                        out.error_kind = str(m.error)
                     for b in m.content:
                         if isinstance(b, TextBlock):
                             texts.append(b.text)
@@ -296,10 +348,14 @@ class LiveRunner:
                         if isinstance(b, ToolResultBlock):
                             activity = "Reviewing the results"
                             body = _tool_result_texts(b)
-                            failed = bool(b.is_error or '"error"' in body[:400])
+                            err = payload_error(body)
+                            if looks_cut(body):                              # counted even when the text also reads as an error
+                                out.results_cut += 1
+                                err = err or f"result too large for the engine to pass on: {body[:160]}"
+                            failed = bool(b.is_error or err)
                             ctx.state.finish(b.tool_use_id, ok=not failed)
                             if failed:
-                                out.tool_errors.append(body[:240])
+                                out.tool_errors.append(shorten_error(err or body))
                 elif isinstance(m, SystemMessage) and not out.session_id:
                     out.session_id = (m.data or {}).get("session_id") if isinstance(m.data, dict) else None
                 elif isinstance(m, ResultMessage):
@@ -307,6 +363,7 @@ class LiveRunner:
                     out.session_id = m.session_id or out.session_id
                     out.turns = m.num_turns
                     out.usage = dict(m.usage or {})
+                    out.api_status = getattr(m, "api_error_status", None)
                     result_text = (m.result or "").strip()
                     if m.subtype == "error_max_budget_usd":
                         out.status, out.message = "budget", "The run hit its cost limit."
@@ -322,6 +379,11 @@ class LiveRunner:
             except Exception:
                 pass
         out.duration_s = round(time.monotonic() - t0 - ctx.approval_seconds(), 2)     # time working, not time waiting for the tap
+        out.session_cost_total = out.cost_usd                  # what the engine reported: the conversation's running total
+        if prior_cost > 0 and out.cost_usd >= prior_cost:      # a resumed conversation: this question is the difference
+            out.cost_usd = round(out.cost_usd - prior_cost, 6)
+        out.plans = ctx.plans_proposed
+        out.engine_lines = list(ctx.engine_lines[-10:])
         out.data_calls = ctx.state.data_calls                  # successful data calls
         out.data_attempts = ctx.state.attempts
         out.answer = result_text or (texts[-1].strip() if texts else "")

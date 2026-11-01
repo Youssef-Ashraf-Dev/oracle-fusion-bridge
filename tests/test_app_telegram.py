@@ -31,13 +31,15 @@ class FakeRunner:
     def __init__(self, res, delay=0.0, results=None):
         self.res, self.delay, self.calls = res, delay, []
         self.results = list(results or [])                       # scripted answers, one per call, before falling back to res
+        self.priors = []                                         # the conversation cost handed to each call
 
     def factory(self, approver):
         outer = self
 
         class R:
-            async def run(self, user_id, question, resume=None, on_status=None):
+            async def run(self, user_id, question, resume=None, on_status=None, prior_cost=0.0):
                 outer.calls.append((user_id, question, resume))
+                outer.priors.append(prior_cost)
                 await asyncio.sleep(outer.delay)
                 return outer.results.pop(0) if outer.results else outer.res
         return R()
@@ -94,7 +96,7 @@ async def test_answer_is_delivered_as_text_with_footer_and_session_saved(tmp_pat
     b, db, runner = await bridge(tmp_path, settings)
     sink = Sink()
     await b.handle("ask", "open invoices?", sink.channel())
-    assert sink.texts[-1] == "42 open invoices.\n\n($0.31, 12s)"                      # FR-09
+    assert sink.texts[-1] == "42 open invoices.\n\n(No new Fusion read \u00b7 $0.310 \u00b7 12s)"      # FR-09
     assert (await db.get_chat(50))["live_session_id"] == REAL_ID
     await b.handle("ask", "and last month?", sink.channel())                         # FR-03: follow-up resumes
     assert runner.calls[1] == (5, "and last month?", REAL_ID)
@@ -199,7 +201,7 @@ async def test_long_answer_arrives_in_pieces_under_the_limit(tmp_path, settings)
     await b.handle("ask", "all invoices", sink.channel())
     answer_pieces = [t for t in sink.texts if not t.startswith(("Working on it", "STATUS"))]
     assert len(answer_pieces) >= 3 and all(len(p) <= 4000 for p in answer_pieces)
-    assert answer_pieces[-1].endswith("($0.50, 30s)")
+    assert answer_pieces[-1].endswith("(No new Fusion read \u00b7 $0.500 \u00b7 30s)")
     await db.close()
 
 
@@ -279,7 +281,7 @@ async def test_usage_and_cycle_math(tmp_path, settings):
     await db.record_run(5, "ask", "ok", 1.5, 3)
     sink = Sink()
     await b.handle("usage", "", sink.channel())
-    assert "of 25" in sink.texts[0] and "$1.50 of $240" in sink.texts[0]
+    assert "of 100" in sink.texts[0] and "$1.50 of $240" in sink.texts[0]
     mid = dt.datetime(2026, 11, 20, tzinfo=dt.timezone.utc)
     early = dt.datetime(2026, 11, 3, tzinfo=dt.timezone.utc)
     assert dt.datetime.fromtimestamp(cycle_start(mid, 7), dt.timezone.utc).date() == dt.date(2026, 11, 7)
@@ -347,3 +349,103 @@ def test_application_registers_the_commands_and_plain_text(settings):
     app = H.build_application("123456:ABC-DEF", Bridge(settings, None, lambda a: None))
     names = {c for h in app.handlers[0] for c in getattr(h, "commands", [])}
     assert {"start", "help", "new", "usage", "ask"} <= names and "report" not in names
+
+
+# ---- what the footer says, who sees costs, and the limits --------------------------------------------------------
+
+def test_the_footer_says_whether_fusion_was_read_just_now():
+    from bridge.app import make_footer
+    fresh = LiveResult(status="ok", data_calls=2, cost_usd=0.0123, duration_s=31.4)
+    reuse = LiveResult(status="ok", data_calls=0, cost_usd=0.0009, duration_s=9)
+    failed = LiveResult(status="timeout", data_calls=3, cost_usd=0.02, duration_s=181)
+    assert make_footer(fresh, True) == "(Fresh from Fusion \u00b7 $0.012 \u00b7 31s)"
+    assert make_footer(reuse, True) == "(No new Fusion read \u00b7 $0.001 \u00b7 9s)"
+    assert make_footer(fresh, False) == "(Fresh from Fusion \u00b7 31s)"                  # no cost for those who may not see it
+    assert make_footer(failed, False) == "(181s)"                                         # a failed run claims nothing about freshness
+
+
+def test_cost_visibility_follows_the_setting_and_the_admin_list(settings):
+    everyone = dataclasses.replace(settings, show_cost="all")
+    admins = dataclasses.replace(settings, show_cost="admin", admin_ids=frozenset({5}))
+    nobody = dataclasses.replace(settings, show_cost="none", admin_ids=frozenset({5}))
+    assert everyone.can_see_cost(9) and admins.can_see_cost(5) and not admins.can_see_cost(9) and not nobody.can_see_cost(5)
+
+
+async def test_a_user_who_may_not_see_costs_gets_neither_the_cost_nor_the_budget(tmp_path, settings):
+    res = LiveResult(status="ok", answer="12 invoices.", cost_usd=0.0123, duration_s=20, data_calls=1, session_id=REAL_ID)
+    b, db, _ = await bridge(tmp_path, settings, res=res, show_cost="admin", admin_ids=frozenset({999}))
+    await db.record_run(5, "ask", "ok", 1.5, 3)
+    sink = Sink()
+    await b.handle("ask", "how many?", sink.channel())
+    await b.handle("usage", "", sink.channel())
+    assert sink.texts[-2].endswith("(Fresh from Fusion \u00b7 20s)") and "$" not in sink.texts[-2].split("\n")[-1]
+    assert sink.texts[-1].startswith("Your questions today:") and "$" not in sink.texts[-1] and "budget" not in sink.texts[-1].lower()
+    await db.close()
+
+
+async def test_a_burst_of_questions_is_slowed_and_zero_means_no_limit(tmp_path, settings):
+    b, db, runner = await bridge(tmp_path, settings, burst_runs=3, burst_minutes=10, user_daily_runs=0)
+    for _ in range(3):
+        await db.record_run(5, "ask", "ok", 0.001, 1)
+    sink = Sink()
+    await b.handle("ask", "one too many", sink.channel())
+    assert runner.calls == [] and "lot of questions in a short time" in sink.texts[-1]
+    await db.db.execute("UPDATE runs SET ts = ts - 3600"); await db.db.commit()          # an hour later the burst has passed
+    await b.handle("ask", "fine now", sink.channel())
+    assert len(runner.calls) == 1                                                          # and a daily limit of 0 never blocks
+    b2, db2, runner2 = await bridge(tmp_path / "x" if False else tmp_path, settings, burst_runs=0, user_daily_runs=0)
+    for _ in range(40):
+        await db2.record_run(5, "ask", "ok", 0.001, 1)
+    await b2.handle("ask", "unlimited", Sink().channel())
+    assert len(runner2.calls) == 1
+    await db.close(); await db2.close()
+
+
+async def test_runs_since_counts_only_recent_questions_of_that_user(tmp_path):
+    db = await Database(tmp_path / "r.db").open()
+    await db.record_run(5, "ask", "ok", 0.01, 1)
+    await db.record_run(6, "ask", "ok", 0.01, 1)
+    await db.db.execute("UPDATE runs SET ts = ts - 7200 WHERE user_id = 5")
+    await db.record_run(5, "ask", "ok", 0.01, 1)
+    await db.db.commit()
+    assert await db.runs_since(5, 600) == 1 and await db.runs_since(5, 86400) == 2 and await db.runs_since(6, 600) == 1
+    await db.close()
+
+
+# ---- restarting the bot while people are waiting --------------------------------------------------------------------
+
+async def test_a_restart_tells_the_user_once_and_stops_their_run(tmp_path, settings):
+    b, db, runner = await bridge(tmp_path, settings, delay=30)                       # a question that would take 30 seconds
+    sink = Sink()
+    task = asyncio.create_task(b.handle("ask", "slow question", sink.channel()))
+    await asyncio.sleep(0.2)
+    assert 5 in b.active
+    n = await b.begin_shutdown(grace_s=0.1)
+    await asyncio.gather(task, return_exceptions=True)
+    assert n == 1 and task.done()
+    restarts = [t for t in sink.texts if "restarting" in t]
+    assert len(restarts) == 1 and "ask it again in a minute" in restarts[0]
+    assert not any("went wrong" in t or "couldn't produce" in t.lower() for t in sink.texts)
+    assert 5 not in b.active and b.stopping is True
+    await db.close()
+
+
+async def test_a_run_that_ends_badly_because_of_the_restart_does_not_add_a_second_message(tmp_path, settings):
+    """Ctrl+C reaches the engine process too, so the run ends with no answer: the user already knows why."""
+    res = LiveResult(status="no_answer", answer="", duration_s=10)
+    b, db, runner = await bridge(tmp_path, settings, res=res, delay=0.4)
+    sink = Sink()
+    task = asyncio.create_task(b.handle("ask", "question", sink.channel()))
+    await asyncio.sleep(0.1)
+    await b.begin_shutdown(grace_s=2.0)
+    await task
+    assert [t for t in sink.texts if "restarting" in t] and not any("produce an answer" in t.lower() for t in sink.texts)
+    row = await (await db.db.execute("SELECT status, meta FROM runs ORDER BY id DESC LIMIT 1")).fetchone()
+    assert row["status"] == "no_answer" and "stopped_by_restart" in row["meta"]                   # still recorded
+    await db.close()
+
+
+async def test_shutting_down_with_nobody_waiting_sends_nothing(tmp_path, settings):
+    b, db, _ = await bridge(tmp_path, settings)
+    assert await b.begin_shutdown(grace_s=0.1) == 0
+    await db.close()
