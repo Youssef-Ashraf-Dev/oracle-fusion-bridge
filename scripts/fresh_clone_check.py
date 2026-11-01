@@ -44,6 +44,13 @@ if pending:
     status = 1
 
 if a.run:
+    import importlib.util
+    print(f"\nPython used for the test: {sys.executable}")
+    if importlib.util.find_spec("claude_agent_sdk") is None:
+        sys.exit("\nSTOP: this Python does not have the project's packages (claude_agent_sdk is missing), so the test would fail for "
+                 "that reason and tell you nothing about the repository.\nActivate the project's .venv first:\n"
+                 "  PowerShell:  .\\.venv\\Scripts\\Activate.ps1\n  Git Bash:    source .venv/Scripts/activate\n"
+                 "then run this again. (python -c \"import sys; print(sys.executable)\" should end in .venv\\Scripts\\python.exe)")
     tmp_root = tempfile.mkdtemp(prefix="freshclone_")
     try:
         tmp = tmp_root

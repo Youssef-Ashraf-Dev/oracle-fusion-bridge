@@ -70,3 +70,21 @@ def test_files_that_were_never_committed_are_listed_but_local_data_and_env_are_n
     (tmp_path / ".env").write_text("SECRET=1")                                  # never reported
     got = uncommitted(tmp_path)
     assert sorted(got) == ["?? bridge/new_module.py", "M committed.py"]
+
+
+def test_the_fresh_clone_check_refuses_a_python_that_lacks_the_projects_packages(tmp_path):
+    """The reported failure: the script ran under the conda base Python, so the exported copy could not import claude_agent_sdk."""
+    import shutil
+    import sys
+    proj = Path(__file__).resolve().parents[1]
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    shutil.copytree(proj / "bridge", tmp_path / "bridge", ignore=shutil.ignore_patterns("__pycache__"))
+    (tmp_path / "scripts").mkdir()
+    shutil.copy(proj / "scripts" / "fresh_clone_check.py", tmp_path / "scripts")
+    code = ("import sys, runpy; sys.modules['claude_agent_sdk'] = None; sys.argv = ['fresh_clone_check.py', '--run']; "
+            "runpy.run_path('scripts/fresh_clone_check.py', run_name='__main__')")
+    r = subprocess.run([sys.executable, "-c", code], cwd=tmp_path, capture_output=True, text=True, timeout=90)
+    out = r.stdout + r.stderr
+    assert r.returncode != 0 and "Python used for the test:" in out
+    assert "STOP: this Python does not have the project's packages" in out and "source .venv/Scripts/activate" in out
+    assert "Activate-ps1" not in out and "Activate.ps1" in out
