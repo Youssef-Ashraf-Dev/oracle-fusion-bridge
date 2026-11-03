@@ -24,6 +24,35 @@ def parse_pytest(text: str) -> tuple[int, int, int, list[str]]:
     return n("passed"), n("failed") + n("error"), n("skipped"), failed_names
 
 
+_EXIT = {1: "some tests failed", 2: "pytest was interrupted (usually an import error while collecting tests)",
+         3: "pytest crashed internally", 4: "pytest could not start (a usage error, or an import error in conftest.py)",
+         5: "pytest found no tests to run"}
+
+
+def dots_seen(text: str) -> int:
+    """How many tests had reported a result (a dot, F, E, s, x or X) before the output ended."""
+    n = 0
+    for line in text.splitlines():
+        body = re.sub(r"\s*\[\s*\d+%\]\s*$", "", line).strip()
+        if body and re.fullmatch(r"[.FEsxX]+", body):
+            n += len(body)
+    return n
+
+
+def pytest_detail(returncode: int, passed: int, failed: int, skipped: int, seconds: float, dots: int = 0) -> str:
+    """One line for the stage: the counts when there are any, and the reason when pytest stopped without a summary."""
+    if passed == 0 and failed == 0 and returncode != 0:
+        if dots > 0:
+            return (f"pytest ended abruptly after about {dots} tests, with no summary (exit code {returncode}, {seconds:.0f}s): "
+                    "the process was stopped from outside, for example by a test that signals its own process")
+        return f"pytest ran no tests (exit code {returncode}: {_EXIT.get(returncode, 'unknown')}) after {seconds:.0f}s"
+    return f"{passed} passed, {failed} failed, {skipped} skipped in {seconds:.0f}s"
+
+
+def tail_lines(text: str, n: int = 14) -> list[str]:
+    return [ln.rstrip()[:200] for ln in text.splitlines() if ln.strip()][-n:]
+
+
 def overall(stages: list[Stage]) -> str:
     if any(s.status == FAIL for s in stages):
         return FAIL

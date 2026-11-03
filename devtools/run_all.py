@@ -25,7 +25,8 @@ sys.path.insert(0, str(ROOT))
 from bridge.config import load_settings                                   # noqa: E402
 from bridge.preflight import (FAIL as PF_FAIL, WARN as PF_WARN, check_anthropic, check_config, check_mcp,  # noqa: E402
                               check_runtime, check_sdk)
-from bridge.runall import FAIL, MANUAL, PASS, SKIP, WARN, Stage, aggregate, overall, parse_pytest  # noqa: E402
+from bridge.runall import (FAIL, MANUAL, PASS, SKIP, WARN, Stage, aggregate, overall, parse_pytest, pytest_detail,  # noqa: E402
+                           tail_lines, dots_seen)
 from bridge.scenarios import render_report, run_scenario, scenarios      # noqa: E402
 from bridge.skillcheck import QUESTION, headings, score, verdict         # noqa: E402
 from bridge.state.db import Database                                      # noqa: E402
@@ -41,9 +42,15 @@ def stage_tests() -> Stage:
     t0 = time.time()
     p = subprocess.run([sys.executable, "-m", "pytest", "-q", "--no-header", "-p", "no:cacheprovider"], cwd=ROOT, env=env,
                        capture_output=True, text=True, timeout=1200)
-    passed, failed, skipped, names = parse_pytest(p.stdout + p.stderr)
-    detail = f"{passed} passed, {failed} failed, {skipped} skipped in {time.time() - t0:.0f}s"
-    return Stage("Offline tests", PASS if p.returncode == 0 else FAIL, detail, [f"failed: {n}" for n in names[:15]])
+    out = p.stdout + p.stderr
+    passed, failed, skipped, names = parse_pytest(out)
+    (ROOT / "data" / "runall").mkdir(parents=True, exist_ok=True)
+    (ROOT / "data" / "runall" / "tests.log").write_text(out, encoding="utf-8")          # the whole output, for when the summary is not enough
+    detail = pytest_detail(p.returncode, passed, failed, skipped, time.time() - t0, dots_seen(out))
+    lines = [f"failed: {n}" for n in names[:15]]
+    if p.returncode != 0:
+        lines += ["last lines of pytest's output (all of it: data/runall/tests.log):"] + ["    " + t for t in tail_lines(out)]
+    return Stage("Offline tests", PASS if p.returncode == 0 else FAIL, detail, lines)
 
 
 async def stage_preflight(s) -> Stage:
@@ -177,7 +184,7 @@ async def main() -> int:
     for st in stages:
         say(f"{st.status:4}  {st.name:18} {st.detail}")
         for line in st.lines:
-            say(f"        {line[:170]}")
+            say(f"        {line[:210]}")
     final = overall(stages)
     say("=" * 78)
     say(f"RESULT: {final}   ({time.time() - t0:.0f}s)   " + {"PASS": "everything automatic passed.", "WARN": "no failures; read the warnings.",

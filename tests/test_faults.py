@@ -286,20 +286,23 @@ async def test_a_too_large_result_is_counted_even_though_its_text_also_reads_as_
 
 async def test_ctrl_c_and_termination_set_the_stop_event_instead_of_cancelling_anything():
     """On Windows the old path cancelled the main task mid-shutdown ('This Application is still running!')."""
-    import os
     import signal
+    import sys
     from bridge.main import install_stop_handler
     loop = asyncio.get_running_loop()
     saved = {s: signal.getsignal(s) for s in (signal.SIGINT, signal.SIGTERM)}
     try:
         stop = asyncio.Event()
         assert install_stop_handler(loop, stop, use_signal_module=True) == "signal"        # the Windows path
-        os.kill(os.getpid(), signal.SIGINT)                                               # would raise KeyboardInterrupt otherwise
+        # raise_signal runs the installed handler inside this process on every platform. os.kill(os.getpid(), SIGINT) does the same
+        # on Linux but TERMINATES the process on Windows, which silently ended the whole test run after 78 tests.
+        signal.raise_signal(signal.SIGINT)
         await asyncio.wait_for(stop.wait(), 3)
-        stop2 = asyncio.Event()
-        assert install_stop_handler(loop, stop2, use_signal_module=False) == "loop"        # the Linux and Mac path
-        os.kill(os.getpid(), signal.SIGTERM)
-        await asyncio.wait_for(stop2.wait(), 3)
+        if sys.platform != "win32":                                                       # loop.add_signal_handler does not exist on Windows
+            stop2 = asyncio.Event()
+            assert install_stop_handler(loop, stop2, use_signal_module=False) == "loop"    # the Linux and Mac path
+            signal.raise_signal(signal.SIGTERM)
+            await asyncio.wait_for(stop2.wait(), 3)
     finally:
         for s, h in saved.items():
             signal.signal(s, h)
@@ -342,3 +345,19 @@ async def test_the_shutdown_line_says_how_long_it_took(tmp_path, settings, caplo
     line = next(r.getMessage() for r in caplog.records if r.getMessage().startswith("Shutdown:"))
     assert "1 question(s) were in flight" in line and "had to be cancelled; took " in line and line.endswith("s")
     await db.close()
+
+
+def test_no_test_signals_its_own_process_with_os_kill():
+    """os.kill(own pid, a signal) terminates the process on Windows instead of delivering the signal: the run just stops, with
+    no error and no summary. Use signal.raise_signal, which behaves the same everywhere."""
+    from pathlib import Path
+    here = Path(__file__).resolve()
+    offenders = []
+    for f in sorted(here.parent.glob("test_*.py")):
+        if f == here:
+            continue
+        for n, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+            code = line.split("#", 1)[0]                                  # a comment may mention the call; only code is a problem
+            if "os.kill(os.getpid()" in code or "os.kill(os.getpid ()" in code:
+                offenders.append(f"{f.name}:{n}")
+    assert offenders == [], f"use signal.raise_signal instead: {offenders}"
