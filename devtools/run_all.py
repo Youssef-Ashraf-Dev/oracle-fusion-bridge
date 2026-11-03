@@ -1,12 +1,12 @@
 """One command that runs every check we have: offline tests, setup preflight, skill check, live scenarios, Telegram token.
 
-    python scripts/run_all.py                 # everything (about 5 to 8 minutes, a few cents of model credit)
-    python scripts/run_all.py --quick         # no model credit: tests, preflight, Telegram token
-    python scripts/run_all.py --list          # show the scenarios and what each one guards against
-    python scripts/run_all.py --only S1,S5    # run only some scenarios
-    python scripts/run_all.py --only S8 --repeat 5 --skip-tests   # run a scenario five times to see how often it passes
-    python scripts/run_all.py --only S10,S16 --repeat 3 --skip-tests --no-recipes   # the same without the pod notes: what do they change?
-    python scripts/run_all.py --skip-tests    # skip the offline test suite
+    python devtools/run_all.py                 # everything (about 5 to 8 minutes, a few cents of model credit)
+    python devtools/run_all.py --quick         # no model credit: tests, preflight, Telegram token
+    python devtools/run_all.py --list          # show the scenarios and what each one guards against
+    python devtools/run_all.py --only S1,S5    # run only some scenarios
+    python devtools/run_all.py --only S8 --repeat 5 --skip-tests   # run a scenario five times to see how often it passes
+    python devtools/run_all.py --only S10,S16 --repeat 3 --skip-tests --no-recipes   # the same without the pod notes: what do they change?
+    python devtools/run_all.py --skip-tests    # skip the offline test suite
 
 Exit code 0 when nothing FAILED (warnings are allowed), 1 otherwise. A report is written to data/runall/report.md.
 The report holds checks and statistics only, never answers, unless you pass --keep-answers.

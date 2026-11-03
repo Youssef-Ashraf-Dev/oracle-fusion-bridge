@@ -2,7 +2,7 @@
 
     python scripts/runs_report.py             # the last 30 questions
     python scripts/runs_report.py --last 100
-    python scripts/runs_report.py --db data/day1/spike.db
+    python scripts/runs_report.py --db data/runall/run.db
 
 Reads data/bridge.db (the bot's own record). Questions and answers are not in it, only the shape of each run.
 The text log is data/logs/bridge.log: one 'run ...' line per question, 'deny ...' per refusal, 'engine: ...' for the engine's errors.

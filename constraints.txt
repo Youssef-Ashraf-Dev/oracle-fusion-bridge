@@ -1,4 +1,4 @@
-# Exact versions installed when this file was made (python scripts/pin_requirements.py --write).
+# Exact versions installed when this file was made (python devtools/pin_requirements.py --write).
 # Use with: pip install -r requirements.txt -c constraints.txt
 aiosqlite==0.22.1
 annotated-types==0.8.0

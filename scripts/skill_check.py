@@ -26,7 +26,7 @@ async def main() -> int:
         print("No skill is configured (PLANNER_SKILL_PATH or SKILL_MODE=none). Nothing to check.")
         return 2
     if not (s.live_ready and s.anthropic_api_key):
-        print("Set ANTHROPIC_API_KEY and ORACLE_* first (run scripts/day1_preflight.py).")
+        print("Set ANTHROPIC_API_KEY and ORACLE_* first (run scripts/preflight.py).")
         return 2
     titles = headings(s.planner_skill)
     s.db_path.parent.mkdir(parents=True, exist_ok=True)

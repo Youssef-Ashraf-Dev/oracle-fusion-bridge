@@ -1,12 +1,12 @@
-# Day 2 acceptance: how we say it is finished
+# Acceptance checklist
 
-Day 2 is done when three things are true: the automatic checks pass, a person has walked the Telegram script below, and
+The bot is accepted when three things are true (this checklist signed off Day 2 and is repeated after deployment): the automatic checks pass, a person has walked the Telegram script below, and
 the logs show a clean run. Tick the boxes as you go.
 
 ## A. Automatic evidence (about 8 minutes, a few cents)
 
 ```
-python scripts/run_all.py
+python devtools/run_all.py
 ```
 - [ ] Offline tests: all pass, none skipped (the real engine and the real MCP bundle are included).
 - [ ] Setup preflight: no FAIL. A WARN on "Pod host" is expected: it asks you to confirm the pod is non-production.
@@ -33,7 +33,7 @@ python scripts/run_all.py
 | FR-12 | `/usage` shows the budget | `test_usage_and_cycle_math` | C1 |
 | FR-13 | Everything is recorded | `test_every_question_leaves_one_summary_line...`, `scripts/runs_report.py` | D |
 | FR-14 | Unconfigured bot refuses cleanly | `test_refuses_cleanly_when_live_is_not_configured` | |
-| NFR-05 | No secret leaves the host | `test_a_traceback_that_contains_the_bot_token_is_blanked`, `test_a_printout_of_the_settings_never_shows_a_secret`, S11, `scripts/secret_scan.py` | E |
+| NFR-05 | No secret leaves the host | `test_a_traceback_that_contains_the_bot_token_is_blanked`, `test_a_printout_of_the_settings_never_shows_a_secret`, S11, `devtools/secret_scan.py` | E |
 | NFR-07 | Timeouts and approval wait | `test_approval_wait_is_excluded...`, `test_compute_timeout_interrupts` | |
 | NFR-08 | State survives a restart | `test_registry_and_state`, `test_an_old_database...` | C9 |
 | NFR-11 | Telegram size and pacing | `test_splitting_counts_utf16_units...`, `test_pieces_are_paced` | C4 |
@@ -90,9 +90,9 @@ Start the bot with `python -m bridge.main` and watch its console. For each step,
 
 - [ ] Sections A, C and D above are ticked.
 - [ ] `python scripts/runs_report.py` after the walk-through shows no `error` runs except the ones you caused on purpose.
-- [ ] `python scripts/secret_scan.py` says CLEAN: no key, token or password in the files git would commit, nor in the logs and reports.
-- [ ] `python scripts/fresh_clone_check.py` finds nothing hidden, and after you commit, `python scripts/fresh_clone_check.py --run` says PASS: a fresh clone starts the real MCP.
-- [ ] `python scripts/pin_requirements.py --write` was run in the project's `.venv`, the two files were committed, and `python scripts/pin_requirements.py --check` says OK (needed before Day 3).
+- [ ] `python devtools/secret_scan.py` says CLEAN: no key, token or password in the files git would commit, nor in the logs and reports.
+- [ ] `python devtools/fresh_clone_check.py` finds nothing hidden, and after you commit, `python devtools/fresh_clone_check.py --run` says PASS: a fresh clone starts the real MCP.
+- [ ] `python devtools/pin_requirements.py --write` was run in the project's `.venv`, the two files were committed, and `python devtools/pin_requirements.py --check` says OK (needed before Day 3).
 - [ ] The data owner has agreed that non-production data may be analysed by the model and shown in Telegram (NFR-12).
 - [ ] Any WARN left in section A has a reason written here: ______________________________
 

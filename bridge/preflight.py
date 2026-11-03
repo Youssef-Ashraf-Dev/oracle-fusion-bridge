@@ -1,4 +1,4 @@
-"""Day 1 preflight: prove the setup works before spending any model credit.
+"""Preflight: prove the setup works before spending any model credit.
 
 Every check that reaches Anthropic uses a free endpoint, and every check that reaches Fusion goes through
 the MCP exactly as the bridge launches it.
@@ -60,7 +60,7 @@ def check_runtime(which: Callable[[str], Optional[str]] = shutil.which, requirem
         unpinned = [p for p in problems if "not pinned" in p]
         out.append(Check("Dependencies pinned and matching", PASS if not problems else WARN,
                          "every requirement is pinned and matches what is installed" if not problems else
-                         (f"{len(unpinned)} requirement(s) not pinned: run python scripts/pin_requirements.py --write" if unpinned
+                         (f"{len(unpinned)} requirement(s) not pinned: run python devtools/pin_requirements.py --write" if unpinned
                           else "; ".join(problems[:4]))))
     return out
 
@@ -252,6 +252,6 @@ def format_checks(checks: list[Check]) -> str:
     fails = sum(1 for c in checks if c.status == FAIL)
     warns = sum(1 for c in checks if c.status == WARN)
     lines.append("")
-    lines.append("READY for the Day 1 spike" + (f" ({warns} warning(s) to read)" if warns else "") if not fails
+    lines.append("READY for live questions" + (f" ({warns} warning(s) to read)" if warns else "") if not fails
                  else f"NOT READY: {fails} check(s) failed")
     return "\n".join(lines)

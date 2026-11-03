@@ -1,11 +1,11 @@
 """Look inside a Fusion resource's description, straight from the pod, without a model.
 
-    python scripts/describe_probe.py invoices                       # size, structure, and anything about "hold"
-    python scripts/describe_probe.py invoices --grep hold,block     # other words
-    python scripts/describe_probe.py invoices --children            # list the child resources (compact)
-    python scripts/describe_probe.py invoices --child lines         # describe one child only
-    python scripts/describe_probe.py workers --hr                   # an HR resource
-    python scripts/describe_probe.py invoices --save invoices.json  # keep the full description to read yourself
+    python devtools/describe_probe.py invoices                       # size, structure, and anything about "hold"
+    python devtools/describe_probe.py invoices --grep hold,block     # other words
+    python devtools/describe_probe.py invoices --children            # list the child resources (compact)
+    python devtools/describe_probe.py invoices --child lines         # describe one child only
+    python devtools/describe_probe.py workers --hr                   # an HR resource
+    python devtools/describe_probe.py invoices --save invoices.json  # keep the full description to read yourself
 
 The description holds field names and types, not business data. It tells you what the bot can actually see:
 how big the description is (too big for the bot's 25,000-token limit?), the child resources, and where a word appears.

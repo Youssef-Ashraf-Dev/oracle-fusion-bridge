@@ -2,8 +2,8 @@
 
 `ris-fusion-gateway-skill/SKILL.md` is the skill that accompanies the RIS Claude Gateway MCP in Claude chat.
 
-On Day 1 the copy shipped here (taken from the team's `ris-fusion-gateway-skill` plugin) was replaced with the file the
-colleague who uses the MCP in chat sent. Its front matter says `name: RIS_Fusion_Gateway-Skill`, with the same description
+The file here is the one sent by the colleague who uses the MCP in chat. It replaced the copy first taken from the team's
+`ris-fusion-gateway-skill` plugin. Its front matter says `name: RIS_Fusion_Gateway-Skill`, with the same description
 as the shipped copy. The bridge reads the name from the file, so the folder name here does not matter.
 
 The `.mcpb` as received contains no skill: its README describes an older bundle (49 read tools and a skill named

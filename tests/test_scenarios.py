@@ -268,3 +268,14 @@ async def test_run_scenario_records_the_unsoftened_verdict(tmp_path, settings):
     async def nothing(c): yield result(0.001, text="I could not read the data." + FOOTER)
     r, _ = await run(tmp_path, settings, "S10", nothing)                       # soft: no data read
     assert r.status == WARN and r.raw_status == FAIL
+
+
+async def test_recording_approver_records_every_plan_and_can_approve_or_ask():
+    from bridge.live.plan import parse_plan
+    from bridge.scenarios import RecordingApprover
+    plan = parse_plan({"summary": "x", "steps": [{"tool": "search_invoices"}]})
+    auto = RecordingApprover("auto")
+    assert await auto(plan) is True and auto.plans == [plan.render()]
+    async def ask(text): return False
+    manual = RecordingApprover("ask", ask)
+    assert await manual(plan) is False and manual.plans == [plan.render()]

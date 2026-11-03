@@ -1,7 +1,7 @@
 """Will a fresh clone of this repository work? Run it before you push, and again after you commit.
 
-    python scripts/fresh_clone_check.py           # fast: files here that git would NOT carry into a clone
-    python scripts/fresh_clone_check.py --run     # also: export the last commit to a temp folder and start the real MCP there
+    python devtools/fresh_clone_check.py           # fast: files here that git would NOT carry into a clone
+    python devtools/fresh_clone_check.py --run     # also: export the last commit to a temp folder and start the real MCP there
 
 A clone is what Day 3's server, a colleague's laptop and a Docker build will see. The fast check finds files hidden by the
 ignore rules. The --run check proves the committed files really start (it needs the network the first time, for the MCP's

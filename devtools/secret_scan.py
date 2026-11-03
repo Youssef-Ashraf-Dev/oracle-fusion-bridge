@@ -1,7 +1,7 @@
 """Is there a secret in what you are about to commit or share? Reports where it is, never what it is.
 
-    python scripts/secret_scan.py            # the files git would commit, plus the local logs and reports
-    python scripts/secret_scan.py --repo     # only the files git would commit
+    python devtools/secret_scan.py            # the files git would commit, plus the local logs and reports
+    python devtools/secret_scan.py --repo     # only the files git would commit
 
 It looks for the shapes of Anthropic keys and Telegram bot tokens, and for the exact current values of
 ANTHROPIC_API_KEY, TELEGRAM_BOT_TOKEN and ORACLE_PASSWORD from your .env. Exit code 1 if anything is found.

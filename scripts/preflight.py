@@ -1,6 +1,6 @@
-"""Day 1, step 1: prove the setup before spending any model credit.
+"""Prove the setup before spending any model credit: Python, uv, settings, the pod, the MCP and the engine.
 
-    python scripts/day1_preflight.py
+    python scripts/preflight.py
 
 Reads the same environment as the bridge (.env values exported, or set in the shell).
 """

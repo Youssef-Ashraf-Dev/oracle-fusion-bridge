@@ -71,7 +71,7 @@ def test_anthropic_key_and_model_checks():
 
 def test_format_reports_ready_or_not():
     from bridge.preflight import Check
-    assert "READY for the Day 1 spike" in format_checks([Check("a", PASS), Check("b", WARN, "look")])
+    assert "READY for live questions" in format_checks([Check("a", PASS), Check("b", WARN, "look")])
     assert "NOT READY: 1" in format_checks([Check("a", FAIL, "why")])
 
 

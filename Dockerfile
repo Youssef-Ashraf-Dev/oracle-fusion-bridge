@@ -8,7 +8,7 @@ RUN pip install -r requirements.txt            # claude-agent-sdk bundles its ow
 COPY vendor ./vendor
 COPY skill ./skill
 COPY bridge ./bridge
-COPY scripts ./scripts
+COPY scripts ./scripts                       # operator tools only: developer tools (devtools/), tests and docs are not copied
 RUN mkdir -p /app/data && chown -R bridge:bridge /app
 USER bridge
 # Pre-build the vendor MCP's environment so the first question doesn't download packages.

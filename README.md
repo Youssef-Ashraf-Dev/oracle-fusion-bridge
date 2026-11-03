@@ -1,76 +1,79 @@
-# Oracle Fusion MCP Bridge for Telegram
+# Oracle Fusion bridge for Telegram
 
-A Telegram front end for the RIS Claude Gateway MCP. A registered user asks an Oracle Fusion question; Claude
-answers it using the MCP's tools; every data read needs the user's approval of a query plan; nothing is written.
-The MCP is used exactly as shipped (`vendor/ris-claude-gateway/`). Scope and decisions are in the project
-specification; protocol and tool behaviour are in the cheat sheet.
+A Telegram front end for the company's RIS Claude Gateway MCP (Oracle Fusion). People ask a question in Telegram, the bot
+proposes which Fusion data it wants to read, the person approves with one tap, and the answer comes back as text.
+It is **read-only**: nothing in Fusion is ever changed, and pay, bank and identity data are refused.
 
-## Layout
 ```
-bridge/app.py            registry, quotas, locks, routing, replies (no Telegram imports)
-bridge/live/             permissions (default-deny allowlist), plan (approval + scope), session (Agent SDK), prompt, skills
-bridge/telegram/         commands, Approve/Deny buttons, plain text counts as /ask, sender discovery
-bridge/demo.py           demo mode: a canned agent so Telegram can be tested with no Oracle and no model
-bridge/state/db.py       SQLite: users, sessions, runs, plans, audit
-bridge/day1.py           Day 1 spike library (cost, turns, quality report)
-bridge/preflight.py      Day 1 preflight (key, model, MCP, pod login)
-bridge/auditview.py      what the bot asked Fusion, ids masked (scripts/audit_tail.py)
-bridge/scenarios.py      live regression scenarios drawn from what we hit (scripts/run_all.py)
-bridge/banner.py         the startup banner; bridge/runsreport.py reads the bot's own record (scripts/runs_report.py)
-bridge/logsafe.py        redacted logging to the console and data/logs/bridge.log
-vendor/ris-claude-gateway   the .mcpb, unzipped, untouched
-skill/                   the planner skill chat loads for this MCP, and recipes.md: verified notes about this pod
-scripts/                 day1_preflight, day1_spike, day1_questions.txt, telegram_smoke, telegram_ids, audit_tail, runs_report, describe_probe, field_probe, secret_scan, fresh_clone_check, pin_requirements, spike_live, check_mcp, add_user
-docs/DAY1.md             the Day 1 runbook
-docs/DAY2.md             the Day 2 runbook: the Telegram side, testable before you have Oracle access
-docs/DAY2_ACCEPTANCE.md  what "Day 2 finished" means: automatic checks, a Telegram walk-through, how to read the logs
-tests/                   352 tests
+Telegram  ->  bridge (this repo)  ->  Claude engine (Haiku, your API key)  ->  the MCP  ->  the Oracle pod
+              plan approval, limits,    loads the Fusion skill, plans,         59 tools,     one shared
+              logs, sessions            calls the allowed tools                read-only     view-only login
 ```
 
-## Everything in one command
-```
-python scripts/run_all.py             # tests, preflight, skill check, 15 live scenarios, Telegram token (about 5-8 min, a few cents)
-python scripts/run_all.py --quick     # no model credit: tests, preflight, Telegram token
-python scripts/run_all.py --list      # the scenarios and what each one guards against
-python scripts/run_all.py --only S8 --repeat 5 --skip-tests   # run one scenario five times: the model is not deterministic
-```
-It prints PASS, WARN or FAIL per stage and exits 1 on any FAIL. The scenario report is `data/runall/scenarios.md`
-(checks and statistics only; answers are not saved unless you add `--keep-answers`). It ends with the few checks that
-need a person with Telegram.
+## What is where
 
-## Day 1 (start here)
-Follow `docs/DAY1.md`:
-```
-python scripts/day1_preflight.py     # no credit spent; also starts the real engine with your options
-python scripts/day1_spike.py         # 10 questions with Haiku, cost and quality report in data/day1/
-```
+| Folder | What it holds | In the Docker image |
+| --- | --- | --- |
+| `bridge/` | The bot: Telegram handlers, the plan gate and tool policy, the engine session, state, logging | yes |
+| `vendor/ris-claude-gateway/` | The company's MCP, **untouched** | yes |
+| `skill/` | The Fusion planner skill the colleague uses in chat, and `recipes.md` (verified notes about this pod) | yes |
+| `scripts/` | Operator tools, useful on the running server | yes |
+| `devtools/` | Developer and acceptance tools | no |
+| `tests/`, `docs/` | The test suite and the acceptance checklist | no |
 
-## Day 2, part 1 (no Oracle needed)
-Follow `docs/DAY2.md`: create the bot, set `DEMO_MODE=true`, and try every Telegram behaviour with an invented agent.
-```
-python scripts/telegram_smoke.py     # token check, command menu
-python scripts/telegram_ids.py       # your Telegram ID
-python -m bridge.main                # the bot, in demo mode
-```
+## Set up (Windows: PowerShell or Git Bash)
 
-## Run the bot
-```
-# .env: ANTHROPIC_API_KEY, TELEGRAM_BOT_TOKEN, ORACLE_*, ALLOWED_TELEGRAM_USER_IDS
-python -m bridge.main                # or: docker compose up --build
-```
-No port is opened: Telegram is reached by long polling.
+1. Create and activate the virtual environment, then install: `python -m venv .venv`; PowerShell `.\.venv\Scripts\Activate.ps1`, Git Bash `source .venv/Scripts/activate`; `pip install -r requirements-dev.txt`. You also need [uv](https://docs.astral.sh/uv/), which launches the MCP.
+2. Copy `.env.example` to `.env` and fill it in. Use a **non-production** pod and a view-only account. Never commit `.env`.
+3. `python scripts/preflight.py` checks the setup without spending any model credit.
+4. Find your Telegram ID (message the bot, then run `python scripts/telegram_ids.py`) and put it in `ALLOWED_TELEGRAM_USER_IDS`.
+5. `python -m bridge.main` starts the bot. Ctrl+C stops it cleanly.
 
-## Behaving like Claude chat
-The MCP was built for chat, so the bridge reproduces what chat supplies: the planner skill (loaded through the Skill tool,
-as chat does), the current date, all tools loaded up front, a cap on result size, and read-only overrides for the
-skill's action sections. The table is in `docs/DAY1.md`.
+In Telegram: send a question as plain text, or use `/ask`, `/new` (fresh conversation), `/usage`, `/help`.
+
+## Tools
+
+**Operator tools in `scripts/`** (they ship in the image: `docker compose exec bridge python scripts/...`)
+
+| Script | Use |
+| --- | --- |
+| `preflight.py` | Prove the setup works |
+| `add_user.py`, `telegram_ids.py` | Register people, find Telegram IDs |
+| `runs_report.py` | What the bot has been doing: status, cost, time, plans, tools |
+| `audit_tail.py` | What was asked of Fusion, with ids and values masked |
+| `check_mcp.py`, `pod_probe.py` | Check the MCP's tools, probe the pod step by step |
+| `skill_check.py` | Prove the Fusion skill really reached the model (about one cent) |
+
+**Developer tools in `devtools/`**
+
+| Script | Use |
+| --- | --- |
+| `run_all.py` | Everything in one command: tests, preflight, skill check, 16 live scenarios, Telegram token. `--quick` spends no credit |
+| `secret_scan.py` | Look for keys, tokens and passwords before a commit or a share. It reports where, never what |
+| `fresh_clone_check.py` | Will a fresh clone work? `--run` starts the real MCP from the last commit |
+| `pin_requirements.py` | Pin both requirements files to the installed versions and write `constraints.txt` |
+| `describe_probe.py`, `field_probe.py` | Look inside a Fusion resource description; find which fields the pod accepts |
 
 ## Tests
-`pytest` runs without a pod or a key. `RUN_MCP_TESTS=1 pytest` also launches the real bundle (needs `uv`).
 
-## Not verified yet
-- A live Agent SDK run with a real key against a pod (Day 1 does this).
-- Telegram delivery over the real network (the handlers are tested with real library objects and a fake network; Day 2 part 1 does the real thing).
-- `docker build` of the image (Day 3).
-- The per-question cost estimates (Day 1 measures them).
-- Whether the SDK's `max_budget_usd` stops a run exactly at the cap.
+`pytest` runs the suite offline. `RUN_MCP_TESTS=1 pytest` also starts the real MCP bundle and the real engine (needs uv and,
+the first time, the network). `docs/ACCEPTANCE.md` is the sign-off checklist: the automatic checks, a Telegram walk-through,
+and how to read the logs.
+
+## Settings that matter
+
+All settings are in `.env.example`, with comments. The ones you will touch: `MODEL`, `SHOW_COST` and `ADMIN_TELEGRAM_USER_IDS`
+(who sees costs), `USER_DAILY_RUNS` and the burst limit, `SESSION_IDLE_MINUTES`, `RUN_BUDGET_USD`, `DEMO_MODE` (invented answers,
+for testing Telegram without Oracle), and `LOG_QUESTIONS` (off by default: questions may contain names).
+
+## Safety, in short
+
+- Every data read needs a tap on an approved plan; writes and the four sensitive HR tools are denied by default.
+- Secrets are blanked from logs and tracebacks. `settings` never prints a key. `devtools/secret_scan.py` checks the files and logs.
+- Logs are in `data/logs/bridge.log`; `data/` (database, engine sessions, logs, reports) is local and sensitive.
+- The vendored MCP is company code with no licence notice: keep this repository **private**.
+
+## Docker
+
+`Dockerfile` and `docker-compose.yml` exist but have **not been built or tested yet**. The image installs only
+`requirements.txt` and copies `bridge/`, `vendor/`, `skill/` and `scripts/`.

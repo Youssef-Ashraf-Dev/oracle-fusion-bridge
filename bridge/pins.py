@@ -75,7 +75,7 @@ def constraints_text(dists: Iterable) -> str:
         if not name or norm(name) in SKIP_IN_CONSTRAINTS or norm(name) in seen or _is_local(d):
             continue
         seen[norm(name)] = f"{name}=={d.version}"
-    header = ("# Exact versions installed when this file was made (python scripts/pin_requirements.py --write).\n"
+    header = ("# Exact versions installed when this file was made (python devtools/pin_requirements.py --write).\n"
               "# Use with: pip install -r requirements.txt -c constraints.txt\n")
     return header + "\n".join(seen[k] for k in sorted(seen)) + "\n"
 

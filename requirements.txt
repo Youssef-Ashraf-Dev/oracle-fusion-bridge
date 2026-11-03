@@ -2,5 +2,3 @@ claude-agent-sdk==0.2.174
 python-telegram-bot==22.8
 aiosqlite==0.22.1
 mcp==1.30.0
-pytest==9.2.0
-pytest-asyncio==1.4.1

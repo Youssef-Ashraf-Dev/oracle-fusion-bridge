@@ -9,11 +9,11 @@ import datetime as dt
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Callable, Optional
+from typing import Awaitable, Callable, Optional
 
 from .config import Settings
-from .day1 import RecordingApprover
 from .live import permissions as P
+from .live.plan import Plan
 from .live.session import LiveResult, LiveRunner
 from .state.db import Database
 
@@ -42,6 +42,20 @@ class Scenario:
     check: Callable[["list[Outcome]", Settings], "list[CheckResult]"]
     guards: str = ""                  # the encounter this scenario exists for
     soft: bool = False                # pod-dependent: a failure is a warning, not a failure
+
+
+class RecordingApprover:
+    """Records every plan shown. mode 'auto' approves it; 'ask' puts the plan to a person through `ask`."""
+
+    def __init__(self, mode: str = "auto", ask: Optional[Callable[[str], Awaitable[bool]]] = None):
+        self.mode, self.ask, self.plans = mode, ask, []
+
+    async def __call__(self, plan: Plan) -> bool:
+        text = plan.render()
+        self.plans.append(text)
+        if self.mode == "ask" and self.ask is not None:
+            return await self.ask(text)
+        return True
 
 
 # ---- generic checks ---------------------------------------------------------------------------------------

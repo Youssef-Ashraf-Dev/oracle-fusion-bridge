@@ -1,8 +1,8 @@
 """Which of these fields does the pod really accept? Finds the one bad name in a list that makes a whole request fail.
 
-    python scripts/field_probe.py ledgersLOV --map LEDGER_FIELD_MAP        # the fields the MCP's list_ledgers asks for
-    python scripts/field_probe.py ledgersLOV --fields LedgerName,Name,CurrencyCode
-    python scripts/field_probe.py ledgersLOV --tool list_ledgers           # also run the MCP's own typed tool once
+    python devtools/field_probe.py ledgersLOV --map LEDGER_FIELD_MAP        # the fields the MCP's list_ledgers asks for
+    python devtools/field_probe.py ledgersLOV --fields LedgerName,Name,CurrencyCode
+    python devtools/field_probe.py ledgersLOV --tool list_ledgers           # also run the MCP's own typed tool once
 
 It sends small read-only requests (one row each). The output holds field names and error text, no business data.
 """

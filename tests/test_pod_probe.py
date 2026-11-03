@@ -30,7 +30,7 @@ OK = {"/": (200, "<html>sign in</html>"), "invoices": (200, "{}"), "purchaseOrde
 
 def test_all_good_says_rerun_the_preflight():
     r = run(OK)
-    assert [x.status for x in r] == [200] * 5 and "rerun scripts/day1_preflight.py" in pp.advice(r)[0]
+    assert [x.status for x in r] == [200] * 5 and "rerun scripts/preflight.py" in pp.advice(r)[0]
     assert "OK" in pp.report("https://pod.example.com", "u", "p", r) and "still the example value" not in pp.report("https://pod.example.com", "u", "p", r)
 
 

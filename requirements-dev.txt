@@ -1,0 +1,4 @@
+# Everything needed to run the tests and the developer tools. The Docker image installs only requirements.txt.
+-r requirements.txt
+pytest==9.2.0
+pytest-asyncio==1.4.1

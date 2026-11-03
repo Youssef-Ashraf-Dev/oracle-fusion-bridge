@@ -50,7 +50,7 @@ class Settings:
     oracle_allowed_base_urls: str = ""
     mcp_prod_writes_enabled: bool = False
 
-    run_budget_usd: float = 0.60                  # per question, passed to the Agent SDK; Day 1 tunes it
+    run_budget_usd: float = 0.60                  # per question, passed to the Agent SDK; measured costs are $0.005 to $0.03
     max_turns: int = 30
     max_rows_per_call: int = 200                  # a data call asking for more rows than this is refused
     monthly_credit_usd: float = 240.0

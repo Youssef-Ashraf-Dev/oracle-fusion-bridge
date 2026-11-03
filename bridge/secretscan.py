@@ -79,7 +79,7 @@ def scan_files(root: Path, files: Iterable[Path], secrets: Mapping[str, str], ma
 def local_data_files(root: Path) -> list[Path]:
     """Files that stay on this machine (logs, run records, reports). A secret here is not in git, but it is on disk."""
     out: list[Path] = []
-    for sub in ("data/logs", "data/runall", "data/day1"):
+    for sub in ("data/logs", "data/runall"):
         d = root / sub
         if d.is_dir():
             out += [p for p in d.rglob("*") if p.is_file() and p.suffix not in (".db", ".db-wal", ".db-shm")]

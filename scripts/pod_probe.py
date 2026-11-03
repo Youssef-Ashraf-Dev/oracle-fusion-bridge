@@ -69,7 +69,7 @@ def advice(results: list[Result]) -> list[str]:
                 "If the browser also fails, the pod is down or unreachable from here (stopped dev pod, VPN, firewall or proxy).",
                 "If the browser works but this fails, a proxy or certificate setting on this machine is the likely cause."]
     if all(c == 200 for c in codes):
-        return ["Everything answered. The login and the REST services work: rerun scripts/day1_preflight.py."]
+        return ["Everything answered. The login and the REST services work: rerun scripts/preflight.py."]
     tips = []
     if any(c == 401 for c in codes):
         tips.append("401: the username or password is wrong (or the account is locked or expired). Check for typos and quotes in .env.")

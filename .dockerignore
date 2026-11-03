@@ -8,3 +8,5 @@ data
 vendor/**/audit
 tests
 docs
+devtools
+requirements-dev.txt
