@@ -127,3 +127,20 @@ async def test_sdk_startup_check_against_the_real_cli_spends_nothing(tmp_path, m
     assert ("Planner skill demo-skill discovered (native, as in chat)" in c) == expect_skill_tool
     if expect_skill_tool:
         assert c["Planner skill demo-skill discovered (native, as in chat)"].status == PASS
+
+
+def test_a_skill_the_engine_did_not_list_is_explained_by_what_it_did_list(tmp_path):
+    """On a clone the preflight said only 'not found under the runtime folder': that cannot tell a missing file from another working folder."""
+    from bridge.preflight import skill_discovery_check
+    name = "ris-fusion-gateway-skill"
+    rt = tmp_path / "runtime"
+    ok = skill_discovery_check(name, {"skills": ["update-config", name]}, rt)
+    assert ok.status == PASS and ok.detail == "listed in the CLI's startup report"
+    (rt / ".claude" / "skills" / name).mkdir(parents=True)
+    (rt / ".claude" / "skills" / name / "SKILL.md").write_text("---\nname: x\n---\n", encoding="utf-8")
+    here = skill_discovery_check(name, {"skills": ["update-config", "debug"], "cwd": "D:/elsewhere"}, rt)
+    assert here.status == FAIL
+    assert "The engine listed: update-config, debug." in here.detail and "Its working folder: D:/elsewhere." in here.detail
+    assert "The skill file is on disk under" in here.detail and "NOT" not in here.detail
+    gone = skill_discovery_check(name, {}, tmp_path / "nowhere")
+    assert gone.status == FAIL and "no skills at all" in gone.detail and "not reported" in gone.detail and "is NOT on disk" in gone.detail

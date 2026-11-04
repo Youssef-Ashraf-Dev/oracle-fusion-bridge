@@ -49,6 +49,16 @@ def prepare_runtime(skill_md: Path, runtime_dir: Path) -> Path:
     target = skills_dir / name
     target.mkdir(parents=True, exist_ok=True)
     dest = target / "SKILL.md"
-    if not dest.exists() or dest.read_bytes() != Path(skill_md).read_bytes():
-        shutil.copyfile(skill_md, dest)
+    want = engine_bytes(skill_md)
+    if not dest.exists() or dest.read_bytes() != want:
+        dest.write_bytes(want)
     return Path(runtime_dir)
+
+
+def engine_bytes(skill_md: Path) -> bytes:
+    """The skill as the engine should read it: Unix line endings and no byte-order mark. A Git checkout on Windows can turn the file into
+    CRLF (this project's .gitattributes asks Git to normalise text files), and the file must begin with the '---' of its header."""
+    data = Path(skill_md).read_bytes()
+    if data.startswith(b"\xef\xbb\xbf"):
+        data = data[3:]
+    return data.replace(b"\r\n", b"\n")

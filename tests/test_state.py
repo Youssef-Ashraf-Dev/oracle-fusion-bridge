@@ -236,3 +236,25 @@ def test_the_new_limits_and_cost_settings_have_defaults_and_come_from_the_enviro
         monkeypatch.setenv(k, v)
     s = load_settings(env_file=None)
     assert (s.user_daily_runs, s.burst_runs, s.show_cost) == (0, 5, "admin") and s.admin_ids == frozenset({11, 22, 33})
+
+
+def test_the_engine_gets_the_skill_with_unix_line_endings_however_git_checked_it_out(tmp_path):
+    """The original folder passed the skill-discovery check with an LF file; the Windows clone, whose checkout made the same file CRLF, failed it."""
+    import os
+    from pathlib import Path
+    from bridge.live.skills import prepare_runtime
+    real = (Path(__file__).resolve().parents[1] / "skill" / "ris-fusion-gateway-skill" / "SKILL.md").read_bytes().replace(b"\r\n", b"\n")
+    crlf = tmp_path / "SKILL.md"
+    crlf.write_bytes(real.replace(b"\n", b"\r\n"))                                          # what Git for Windows writes into the working tree
+    dest = prepare_runtime(crlf, tmp_path / "rt") / ".claude" / "skills" / "ris-fusion-gateway-skill" / "SKILL.md"
+    assert dest.read_bytes() == real and b"\r" not in dest.read_bytes()
+    crlf.write_bytes(b"\xef\xbb\xbf" + crlf.read_bytes())                                   # a byte-order mark would hide the header too
+    prepare_runtime(crlf, tmp_path / "rt")
+    assert dest.read_bytes() == real and dest.read_bytes().startswith(b"---")
+    stamp = os.stat(dest).st_mtime_ns
+    prepare_runtime(crlf, tmp_path / "rt")                                                    # unchanged input: nothing is rewritten
+    assert os.stat(dest).st_mtime_ns == stamp
+    stale = tmp_path / "rt" / ".claude" / "skills" / "ris-fusion-gateway-skill"
+    dest.write_bytes(real.replace(b"\n", b"\r\n"))                                           # a CRLF copy left by an earlier run is repaired
+    prepare_runtime(crlf, tmp_path / "rt")
+    assert (stale / "SKILL.md").read_bytes() == real

@@ -180,6 +180,19 @@ async def check_mcp(s: Settings, extra_env: Optional[dict] = None) -> list[Check
     return out
 
 
+def skill_discovery_check(name: str, init: dict, runtime_dir) -> Check:
+    """Is the planner skill in the engine's startup report? When it is not, say what the engine did list and where it was looking,
+    because 'not found' alone does not tell a missing file from a different working folder from a different name."""
+    label = f"Planner skill {name} discovered (native, as in chat)"
+    listed = [str(x) for x in init.get("skills", [])]
+    if name in listed:
+        return Check(label, PASS, "listed in the CLI's startup report")
+    on_disk = (Path(runtime_dir) / ".claude" / "skills" / name / "SKILL.md").is_file()
+    return Check(label, FAIL, f"not found. The engine listed: {', '.join(listed) or 'no skills at all'}. "
+                              f"Its working folder: {init.get('cwd', 'not reported')}. "
+                              f"The skill file {'is' if on_disk else 'is NOT'} on disk under {runtime_dir}")
+
+
 async def check_sdk(s: Settings, timeout: float = 240) -> list[Check]:
     """Start the bundled CLI with the bridge's exact options and read its startup report.
 
@@ -255,8 +268,7 @@ async def check_sdk(s: Settings, timeout: float = 240) -> list[Check]:
         from .live.skills import valid_skill_name
         out.append(Check("Skill name follows the lowercase-hyphen convention", PASS if valid_skill_name(name) else WARN,
                          name if valid_skill_name(name) else f"{name}: use lowercase letters, digits and hyphens only (no capitals or underscores)"))
-        out.append(Check(f"Planner skill {name} discovered (native, as in chat)", PASS if name in init.get("skills", []) else FAIL,
-                         "listed in the CLI's startup report" if name in init.get("skills", []) else "not found under the runtime folder"))
+        out.append(skill_discovery_check(name, init, s.runtime_dir))
     else:
         out.append(Check("Planner skill", PASS, f"mode {s.effective_skill_mode}: " + (
             "pasted into the system prompt" if s.effective_skill_mode == "inline" else "not used (set PLANNER_SKILL_PATH to load it)")))
