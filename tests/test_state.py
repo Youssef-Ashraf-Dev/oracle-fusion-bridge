@@ -62,7 +62,7 @@ def test_skill_name_and_runtime_folder(tmp_path):
     assert skill_name(g) == "other"                                           # falls back to the folder name
     rt = prepare_runtime(f, tmp_path / "rt")
     dest = rt / ".claude" / "skills" / "ris-fusion-gateway-skill" / "SKILL.md"
-    assert dest.read_bytes() == f.read_bytes()
+    assert dest.read_bytes() == f.read_bytes().replace(b"\r\n", b"\n")                  # a copy with Unix line endings, whatever the source has
     f.write_text(f.read_text(encoding="utf-8") + "\nmore", encoding="utf-8")
     prepare_runtime(f, tmp_path / "rt")                                       # a changed skill is refreshed
     assert dest.read_text(encoding="utf-8").endswith("more")
