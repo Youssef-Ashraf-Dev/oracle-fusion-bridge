@@ -10,10 +10,12 @@ import re
 import shutil
 from pathlib import Path
 
+from ..textio import read_text
+
 
 def skill_name(skill_md: Path) -> str:
     """The `name:` from the SKILL.md front matter, falling back to the containing folder's name."""
-    text = Path(skill_md).read_text(encoding="utf-8")
+    text = read_text(skill_md)
     m = re.match(r"^---\s*\n(.*?)\n---", text, re.S)
     if m:
         n = re.search(r"^name:\s*[\"']?([A-Za-z0-9._-]+)[\"']?\s*$", m.group(1), re.M)
@@ -23,7 +25,7 @@ def skill_name(skill_md: Path) -> str:
 
 
 def skill_body(skill_md: Path) -> str:
-    text = Path(skill_md).read_text(encoding="utf-8")
+    text = read_text(skill_md)
     return text.split("---", 2)[-1].strip() if text.startswith("---") else text
 
 

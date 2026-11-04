@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import Callable, Optional
 from urllib.parse import urlparse
 
+from .textio import read_text
 from .config import Settings, env_conflicts, origin
 from .live import permissions as P
 from .live.session import mcp_env
@@ -43,7 +44,19 @@ def http_get(url: str, headers: dict) -> tuple[int, str]:
         return 0, f"{type(e).__name__}: {e}"
 
 
-def check_runtime(which: Callable[[str], Optional[str]] = shutil.which, requirements_path: Optional[Path] = None) -> list[Check]:
+def check_env_encoding(env_path: Path) -> Optional[Check]:
+    """How the .env file is saved. UTF-8 is right; a BOM, UTF-16 or ANSI are read correctly but are worth fixing."""
+    if not env_path.is_file():
+        return None
+    from .textio import kind
+    k = kind(env_path.read_bytes())
+    return Check(".env is saved as plain UTF-8", PASS if k == "utf-8" else WARN,
+                 "UTF-8" if k == "utf-8" else f"saved as {k}: it is read correctly, but re-save it as UTF-8 (in VS Code: the encoding "
+                 "button in the status bar, then 'Save with Encoding')")
+
+
+def check_runtime(which: Callable[[str], Optional[str]] = shutil.which, requirements_path: Optional[Path] = None,
+                  env_path: Optional[Path] = None) -> list[Check]:
     ok = sys.version_info >= (3, 11)
     in_venv = sys.prefix != getattr(sys, "base_prefix", sys.prefix)
     out = [Check("Python 3.11 or newer", PASS if ok else FAIL, sys.version.split()[0]),
@@ -54,9 +67,12 @@ def check_runtime(which: Callable[[str], Optional[str]] = shutil.which, requirem
                  which("uv") or "install uv: https://docs.astral.sh/uv/")]
     from .config import ROOT
     from .pins import check_pins, installed_versions
+    env_check = check_env_encoding(env_path or (ROOT / ".env"))
+    if env_check:
+        out.append(env_check)
     req = requirements_path or (ROOT / "requirements.txt")
     if req.is_file():
-        problems = check_pins(req.read_text(encoding="utf-8"), installed_versions())
+        problems = check_pins(read_text(req), installed_versions())
         unpinned = [p for p in problems if "not pinned" in p]
         out.append(Check("Dependencies pinned and matching", PASS if not problems else WARN,
                          "every requirement is pinned and matches what is installed" if not problems else

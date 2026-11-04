@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import Awaitable, Callable, Optional
 
 from .config import Settings
+from .dates import month
 from .live import permissions as P
 from .live.plan import Plan
 from .live.session import LiveResult, LiveRunner
@@ -123,8 +124,14 @@ def has_digit(o: Outcome) -> CheckResult:
 
 
 def common(o: Outcome, s: Settings) -> list[CheckResult]:
-    return [answered(o), no_policy_loop(o), plan_count(o), speed(o, s), cost_ok(o, s)] + (
-        [plain_text(o), as_of_line(o)] if o.res.status == "ok" else [])
+    """The checks every answered scenario gets. The pod and date line says where data came from, so it is expected only
+    when data was read: a clarifying question or a refusal has nothing to date."""
+    checks = [answered(o), no_policy_loop(o), plan_count(o), speed(o, s), cost_ok(o, s)]
+    if o.res.status == "ok":
+        checks.append(plain_text(o))
+        if o.res.data_calls > 0:
+            checks.append(as_of_line(o))
+    return checks
 
 
 def declined(o: Outcome) -> list[CheckResult]:
@@ -241,10 +248,10 @@ def _ambiguous(os, s):
 def _relative_date(os, s):
     o = os[0]
     now = dt.datetime.now(dt.timezone.utc)
-    mentions = (f"{now:%Y-%m}" in o.res.answer or now.strftime("%B").lower() in o.res.answer.lower()
+    mentions = (f"{now:%Y-%m}" in o.res.answer or month(now).lower() in o.res.answer.lower()
                 or "this month" in o.res.answer.lower())
     return common(o, s) + [reached_data(o), CheckResult("named the month it used", PASS if mentions else WARN,
-                                                          "" if mentions else f"no mention of {now:%B %Y}")]
+                                                          "" if mentions else f"no mention of {month(now)} {now:%Y}")]
 
 
 def _long_list(os, s):
@@ -288,11 +295,45 @@ def _all() -> list[Scenario]:
                  "phone-sized answers: about 25 rows and a note that more exist", soft=True),
         Scenario("S16", "Ledgers (typed tool is broken on this pod)", ("List the ledgers on this pod.",), _ledgers,
                  "list_ledgers returns 400 on this pod: the bot must recover through the generic reader", soft=True),
+        Scenario("S17", "A broader follow-up is not answered from a sample", ("Show the 5 most recent sick leave absences, person numbers only.",
+                                                                                 "Who took sick leave in September 2026?"),
+                 _broader_follow_up, "the 10 most recent rows were used to answer 'who took sick leave in September' as if complete", soft=True),
+        Scenario("S18", "People questions show names by default", ("Who took the last 3 absences?",), _people_show_names,
+                 "listed people by number only and needed a follow-up, where a refusal could happen", soft=True),
         Scenario("S9", "Names after person numbers", ("Who took the last 3 absences? Give person numbers only.", "Now give me their names."),
                  _names_follow_up, "the bot refused names it is allowed to show after a profile tool was refused earlier"),
         Scenario("S8", "Arabic question", ("كم عدد فواتير الموردين في هذا النظام؟ أعطني العدد الإجمالي فقط.",), _arabic,
                  "the team works in Arabic as well as English"),
     ]
+
+
+_SCOPE_SAID = re.compile(r"(?i)\b(only|just)\b[^.\n]{0,40}\b(rows?|results?|records?|list|those|the \d+|the (five|ten|first|latest|most recent))\b"
+                         r"|\bsample\b|already (fetched|retrieved|read|have)|limited to|from (the|that|my) (earlier|previous|last)|earlier (list|result|answer)")
+
+
+def _broader_follow_up(os, s):
+    """The 10 most recent rows are a sample. A broader question about a month needs a new read, or an honest 'only these rows'."""
+    first, second = os
+    reread = bool(second.plans) and second.res.data_calls >= 1
+    scoped = bool(_SCOPE_SAID.search(second.res.answer))
+    return common(first, s) + [
+        CheckResult("second question answered", PASS if second.res.status == "ok" and second.res.answer.strip() else FAIL, second.res.status),
+        CheckResult("did not pass a sample off as the whole answer", PASS if (reread or scoped) else FAIL,
+                    "read the data again" if reread else ("said it covers only the rows already fetched" if scoped
+                                                           else "answered a broader question from earlier rows without saying so"))]
+
+
+def _people_show_names(os, s):
+    o = os[0]
+    asked_workers = any("workers" in str(t.get("input", "")).lower() for t in o.res.tool_calls)
+    refused = any(k in o.res.answer.lower() for k in _NAME_REFUSALS)
+    tried_or = any("workers" in str(t.get("input", "")).lower() and re.search(r"(?i)\sor\s", str(t.get("input", ""))) for t in o.res.tool_calls)
+    return common(o, s) + [reached_data(o),
+                           CheckResult("looked the names up in the same plan", PASS if asked_workers else WARN,
+                                       "" if asked_workers else "listed people without asking the workers resource for their names"),
+                           CheckResult("asked for one person per call, not an or query", WARN if tried_or else PASS,
+                                       "tried an or query on workers (the bridge refuses it: it returns only the first person)" if tried_or else ""),
+                           CheckResult("did not refuse worker names", FAIL if refused else PASS)]
 
 
 def scenarios() -> list[Scenario]:

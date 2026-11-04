@@ -100,7 +100,7 @@ def test_typed_tool_still_needs_its_own_step():
 def test_generic_reader_set_matches_the_tools_that_really_take_a_resource():
     import json
     from pathlib import Path
-    tools = json.loads((Path(__file__).with_name("tools_inspected.json")).read_text())
+    tools = json.loads((Path(__file__).with_name("tools_inspected.json")).read_text(encoding="utf-8"))
     assert P.GENERIC_READERS <= {t["name"] for t in tools}
 
 

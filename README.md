@@ -49,16 +49,28 @@ In Telegram: send a question as plain text, or use `/ask`, `/new` (fresh convers
 | Script | Use |
 | --- | --- |
 | `run_all.py` | Everything in one command: tests, preflight, skill check, 16 live scenarios, Telegram token. `--quick` spends no credit |
-| `secret_scan.py` | Look for keys, tokens and passwords before a commit or a share. It reports where, never what |
+| `secret_scan.py` | Look for keys, tokens and passwords before a commit or a share. It reports where, never what. `--history` searches every commit of every branch and lists who is named as author; `--also WORD` adds your own words |
 | `fresh_clone_check.py` | Will a fresh clone work? `--run` starts the real MCP from the last commit |
 | `pin_requirements.py` | Pin both requirements files to the installed versions and write `constraints.txt` |
-| `describe_probe.py`, `field_probe.py` | Look inside a Fusion resource description; find which fields the pod accepts |
+| `describe_probe.py`, `field_probe.py` | Look inside a Fusion resource description; find which fields the pod accepts (`--hr` for HR resources) |
+| `query_probe.py` | Try one read and see what the pod does: which sort spelling it accepts, whether rows really come back in order. Prints only the fields you ask for |
+| `verify_answers.py` | Is the answer RIGHT? Asks Fusion the same count directly and compares it with the number in the bot's answer. The scenarios check behaviour, this checks correctness |
+| `lookup_probe.py` | Why did only some names come back? Looks the same people up several ways and compares, printing only counts and person numbers |
 
 ## Tests
 
 `pytest` runs the suite offline. `RUN_MCP_TESTS=1 pytest` also starts the real MCP bundle and the real engine (needs uv and,
 the first time, the network). `docs/ACCEPTANCE.md` is the sign-off checklist: the automatic checks, a Telegram walk-through,
 and how to read the logs.
+
+## Windows and Linux
+
+The team works on Windows (PowerShell or Git Bash) and the container runs Linux, so everything must work on both.
+`.github/workflows/tests.yml` runs the whole suite on a Windows machine and a Linux machine for every push, and `tests/test_portability.py`
+enforces the rules that most often break one of them: name the encoding on every text read and write, never signal your own
+process with `os.kill`, use `signal.raise_signal`, build paths from `tmp_path` and not from `/tmp/...`, keep date names in English
+through `bridge/dates.py`, and read hand-edited files through `bridge/textio.py` (a `.env` saved with a BOM or as UTF-16 still works).
+`python devtools/fresh_clone_check.py` and the preflight say when the wrong Python is active.
 
 ## Settings that matter
 
@@ -69,6 +81,7 @@ for testing Telegram without Oracle), and `LOG_QUESTIONS` (off by default: quest
 ## Safety, in short
 
 - Every data read needs a tap on an approved plan; writes and the four sensitive HR tools are denied by default.
+- The prompt states that the data owner approved showing worker names, person numbers and absence types from the non-production pod (`bridge/live/prompt.py`). If the pod or the approval changes, change that rule and scenario S9.
 - Secrets are blanked from logs and tracebacks. `settings` never prints a key. `devtools/secret_scan.py` checks the files and logs.
 - Logs are in `data/logs/bridge.log`; `data/` (database, engine sessions, logs, reports) is local and sensitive.
 - The vendored MCP is company code with no licence notice: keep this repository **private**.

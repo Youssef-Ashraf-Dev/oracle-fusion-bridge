@@ -10,6 +10,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from bridge.logsafe import safe_streams     # noqa: E402
+safe_streams()
+
 from bridge.config import load_settings                                   # noqa: E402
 from bridge.live.session import LiveRunner                                # noqa: E402
 from bridge.skillcheck import QUESTION, headings, score, verdict          # noqa: E402

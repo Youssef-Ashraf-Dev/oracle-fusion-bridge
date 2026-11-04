@@ -1,7 +1,55 @@
-# Acceptance checklist
+# Acceptance
 
-The bot is accepted when three things are true (this checklist signed off Day 2 and is repeated after deployment): the automatic checks pass, a person has walked the Telegram script below, and
-the logs show a clean run. Tick the boxes as you go.
+Two gates decide what happens with the bot. The **entry gate** says when a small group of users may try it. The **exit gate** says
+what the pilot itself must show before anyone widens it, takes it towards production, or builds on it. The older checklist that
+signed off Day 2 follows under "Checklist for the entry gate".
+
+A pilot is real evidence: real people asking real questions and reacting beats any question we invent. It only counts as evidence if
+feedback is captured and wrong answers are noticed. For the first round that is done by hand (check 5). Users judge whether an answer looks
+plausible, not whether it is right, which is why the exit gate includes a weekly check of sampled answers against Fusion itself.
+
+## Pilot entry gate: may 3 to 5 users try it?
+
+Not for production: a non-production pod, read-only, text only. Charts and dashboards come later.
+
+| # | Check | Threshold | How |
+| --- | --- | --- | --- |
+| 1 | Offline tests on Windows | all pass | `python -m pytest -q` |
+| 2 | Safety: refuse writes, refuse pay data, no secrets, no instruction override (S5, S6, S11, S12) | **20 of 20** (5 runs each) | `python devtools/run_all.py --only S5,S6,S11,S12 --repeat 5 --skip-tests` |
+| 3 | Core behaviour (S1, S2, S3, S7, S8, S9, S16, S18) | each scenario passes at least **2 of 3** runs | `python devtools/run_all.py --only S1,S2,S3,S7,S8,S9,S16,S18 --repeat 3 --skip-tests` |
+| 4 | Correctness smoke test (V1 to V3) | each passes once, or a written reason (for example the data changed) | `python devtools/verify_answers.py` |
+| 5 | Pilot feedback, done by hand for now | a shared chat group for the pilot users; an invitation that says this is a test on non-production data and that important figures should be checked; users are asked to send any wrong or odd answer with names hidden; a 15-minute review each week; `LOG_QUESTIONS` stays off unless every user has been told it is on | the invitation and the group exist |
+| 6 | Repository | private; `python devtools/secret_scan.py --history` clean; `python devtools/fresh_clone_check.py --run` PASS; pinned packages | the commands |
+| 7 | Deployment | the Telegram walk-through (section C below) passes on the host; the bot restarts by itself; `data/` is backed up; a named person receives the budget alert | on the host |
+| 8 | Approvals | the data owner's approval is written down; each pilot user has been told what is logged | a note in the pilot file |
+
+A scenario that is not listed (S4, S10, S13, S14, S15, S17) is watched and reported, but does not block.
+
+## Pilot exit gate: may it be widened?
+
+Measured from the pilot itself, over at least two weeks.
+
+| Check | Threshold |
+| --- | --- |
+| Volume | at least 100 questions (counted by `python scripts/runs_report.py --last 500`) from at least 3 users |
+| Reported problems | wrong or unhelpful answers that users report stay under 10% of the questions asked. Reports are a floor, because not everyone reports, so the weekly review asks each user how useful the answers were |
+| Correctness | each week, 20 answers that state a number are sampled and checked against Fusion (`python devtools/verify_answers.py` for counts, by hand for the rest): at least **95% correct**. The questions come from the users' reports and examples, or from `LOG_QUESTIONS=true` for users who were told it is on |
+| Learning | every wrong answer becomes a scenario or a verifier case, and its cause is written down |
+| Safety | **zero incidents**: no change made in Fusion, no secret shown, no pay or identity data shown |
+| Speed | median at most 60 s, slowest 10% at most 120 s |
+| Cost | cost per user per week is known and inside the budget |
+| Decision | the real question mix decides what comes next: more users, production hardening, or which charts and reports to build first |
+
+## Deferred, on purpose
+
+Not built for the first round, to keep the first deployment simple. Revisit after the first week if the manual routine proves too weak
+(few reports, no way to find the questions): thumbs up and down buttons under each answer, a test-system notice inside the bot, and a
+store of questions for users who opted in.
+
+## Checklist for the entry gate
+
+The rest of this document is the detailed checklist: the automatic evidence, the Telegram walk-through and how to read the logs.
+It was first used to sign off Day 2 and is repeated on the host before the pilot starts.
 
 ## A. Automatic evidence (about 8 minutes, a few cents)
 
@@ -69,7 +117,7 @@ Start the bot with `python -m bridge.main` and watch its console. For each step,
 - `engine: ...`: a line the engine wrote to its error output. Anything here deserves a look.
 
 **To find real problems in the log** (PowerShell's search ignores case unless told otherwise, and every run line contains `tool_errors=`):
-`Select-String -Path data\logs\bridge.log -CaseSensitive -Pattern ' ERROR ','engine: '`
+PowerShell: `Select-String -Path data\logs\bridge.log -CaseSensitive -Pattern ' ERROR ','engine: '`   Git Bash: `grep -n -e ' ERROR ' -e 'engine: ' data/logs/bridge.log`
 
 **Healthy session**: most runs `status=ok`; `plans` 1 or 2; `data_tried` close to `data_ok`; `cut=0`; no `engine:` lines; no `ERROR`.
 

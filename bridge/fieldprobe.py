@@ -19,17 +19,20 @@ def field_map_keys(path: Path, name: str) -> list[str]:
     raise KeyError(f"{name} is not defined in {path}")
 
 
-async def probe_fields(call: Call, resource: str, fields: list[str]) -> dict[str, Any]:
-    """Ask for one row of the resource with each field alone, and then with all of them together."""
+async def probe_fields(call: Call, resource: str, fields: list[str], hr: bool = False) -> dict[str, Any]:
+    """Ask for one row of the resource with each field alone, and then with all of them together. hr=True uses the HR tool,
+    which takes the fields as a list; the finance tool takes a comma string."""
+    tool = "query_resource" if hr else "fusion_query_resource"
+    arg = (lambda names: list(names)) if hr else (lambda names: ",".join(names))
     single: list[tuple[str, bool, str]] = []
     for f in fields:
         try:
-            await call("fusion_query_resource", {"resource": resource, "fields": f, "limit": 1})
+            await call(tool, {"resource": resource, "fields": arg([f]), "limit": 1})
             single.append((f, True, ""))
         except ToolError as e:
             single.append((f, False, shorten_error(str(e), 200)))
     try:
-        await call("fusion_query_resource", {"resource": resource, "fields": ",".join(fields), "limit": 1})
+        await call(tool, {"resource": resource, "fields": arg(fields), "limit": 1})
         together, together_error = True, ""
     except ToolError as e:
         together, together_error = False, shorten_error(str(e), 300)

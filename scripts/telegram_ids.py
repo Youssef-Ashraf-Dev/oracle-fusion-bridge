@@ -11,6 +11,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from bridge.logsafe import safe_streams     # noqa: E402
+safe_streams()
+
 from telegram import Bot                                                  # noqa: E402
 from telegram.error import Conflict, InvalidToken, NetworkError           # noqa: E402
 

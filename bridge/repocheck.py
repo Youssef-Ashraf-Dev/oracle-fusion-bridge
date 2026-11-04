@@ -14,7 +14,7 @@ class NotAGitRepo(RuntimeError):
 
 def _git(root: Path, *args: str, stdin: str | None = None) -> str:
     try:
-        return subprocess.run(["git", *args], cwd=root, input=stdin, capture_output=True, text=True, timeout=60, check=True).stdout
+        return subprocess.run(["git", *args], cwd=root, input=stdin, capture_output=True, text=True, timeout=60, check=True, encoding="utf-8", errors="replace").stdout
     except FileNotFoundError as e:
         raise NotAGitRepo("git is not installed or not on the PATH") from e
     except subprocess.CalledProcessError as e:

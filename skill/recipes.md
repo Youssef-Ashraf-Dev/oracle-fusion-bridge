@@ -21,3 +21,9 @@
   around it is not yet confirmed: scenario S16 tests it.)
 - Typed searches return wide rows: each invoice from search_invoices is about 1 KB, so limit 50 gave 61,152 characters and the
   engine refused it as too large. Ask for 25 rows or fewer, or use fusion_query_resource with fields. (Seen in scenario S7: 61,152 characters were refused.)
+- Looking up names: a query on workers that joins people with or returns ONLY THE FIRST person. Ten person numbers in one query
+  returned 1, batches of 5 returned 2, and one person per call returned 10 of 10. Ask for one person per call (q PersonNumber = '<number>',
+  fields PersonNumber,DisplayName); the bridge refuses an or lookup on workers. (Checked with devtools/lookup_probe.py on this pod, twice with the same result.)
+- HR filters: join conditions with a semicolon, as in startDate >= 2025-01-01;startDate <= 2025-12-31;absenceType LIKE 'Sick%'. The word and does
+  not work: the pod answers 400, "cannot be created from string startDate <= 2025-12-31". (Seen in the pod's own 400 message in the first run of
+  devtools/verify_answers.py, and in scenario runs where the calls with a semicolon went through.)

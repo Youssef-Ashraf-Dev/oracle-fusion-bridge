@@ -3,6 +3,7 @@
     python devtools/field_probe.py ledgersLOV --map LEDGER_FIELD_MAP        # the fields the MCP's list_ledgers asks for
     python devtools/field_probe.py ledgersLOV --fields LedgerName,Name,CurrencyCode
     python devtools/field_probe.py ledgersLOV --tool list_ledgers           # also run the MCP's own typed tool once
+    python devtools/field_probe.py absences --hr --fields personNumber,PersonNumber,absenceType,absenceDispStatus,startDate   # an HR resource
 
 It sends small read-only requests (one row each). The output holds field names and error text, no business data.
 """
@@ -13,6 +14,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from bridge.logsafe import safe_streams     # noqa: E402
+safe_streams()
 
 from mcp import ClientSession, StdioServerParameters                       # noqa: E402
 from mcp.client.stdio import stdio_client                                  # noqa: E402
@@ -29,6 +33,7 @@ async def main() -> int:
     ap.add_argument("--fields", default="", help="comma list of field names to test")
     ap.add_argument("--map", default="", help="name of a *_FIELD_MAP in the MCP's field_maps.py, e.g. LEDGER_FIELD_MAP")
     ap.add_argument("--tool", default="", help="also call this typed tool once with no arguments, e.g. list_ledgers")
+    ap.add_argument("--hr", action="store_true", help="the resource is an HR resource (uses query_resource, fields as a list)")
     a = ap.parse_args()
     s = load_settings()
     if not s.live_ready:
@@ -56,7 +61,7 @@ async def main() -> int:
                     print(f"Typed tool {a.tool}: FAILED\n   {shorten_error(str(e), 400)}")
             if fields:
                 print(f"\nTesting {len(fields)} field(s) on {a.resource}, one at a time...")
-                r = await probe_fields(call, a.resource, fields)
+                r = await probe_fields(call, a.resource, fields, hr=a.hr)
                 for f, ok, err in r["fields"]:
                     print(f"  {'OK ' if ok else 'BAD'} {f}" + (f"   {err}" if err else ""))
                 print(f"\nAll together: {'OK' if r['together_ok'] else 'FAILED  ' + r['together_error']}")

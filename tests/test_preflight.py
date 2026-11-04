@@ -111,7 +111,7 @@ async def test_sdk_startup_check_against_the_real_cli_spends_nothing(tmp_path, m
     from bridge.preflight import check_sdk
     skill = tmp_path / "demo-skill" / "SKILL.md"
     skill.parent.mkdir()
-    skill.write_text('---\nname: "demo-skill"\ndescription: "Use for Fusion"\n---\n# Demo')
+    skill.write_text('---\nname: "demo-skill"\ndescription: "Use for Fusion"\n---\n# Demo', encoding="utf-8")
     s = dataclasses.replace(GOOD, oracle_base_url="https://np-pod.example.invalid", oracle_allowed_base_urls="np-pod.example.invalid",
                             mcp_dir=Path(__file__).resolve().parents[1] / "vendor" / "ris-claude-gateway",
                             planner_skill=skill, skill_mode=mode, runtime_dir=tmp_path / "rt")

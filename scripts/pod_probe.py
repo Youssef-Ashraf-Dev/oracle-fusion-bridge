@@ -15,6 +15,9 @@ from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from bridge.logsafe import safe_streams     # noqa: E402
+safe_streams()
+
 import httpx                                                              # noqa: E402
 
 from bridge.config import env_conflicts, load_settings, origin             # noqa: E402

@@ -37,7 +37,7 @@ def test_env_file_loader(tmp_path, monkeypatch):
     from bridge.config import load_env_file, load_settings
     f = tmp_path / ".env"
     f.write_text('# comment\n\nANTHROPIC_API_KEY=sk-test\nORACLE_USERNAME="svc view"\nORACLE_FUSION_BASE_URL=https://np.example.com  # the pod\n'
-                 'ORACLE_PASSWORD=pw\nALREADY=from-file\nBAD LINE\n')
+                 'ORACLE_PASSWORD=pw\nALREADY=from-file\nBAD LINE\n', encoding="utf-8")
     for k in ("ANTHROPIC_API_KEY", "ORACLE_USERNAME", "ORACLE_FUSION_BASE_URL", "ORACLE_PASSWORD", "ALREADY"):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setenv("ALREADY", "from-shell")
@@ -54,24 +54,24 @@ def test_skill_name_and_runtime_folder(tmp_path):
     from bridge.live.skills import prepare_runtime, skill_body, skill_name
     f = tmp_path / "somefolder" / "SKILL.md"
     f.parent.mkdir()
-    f.write_text('---\nname: "ris-fusion-gateway-skill"\ndescription: x\n---\n# Body\nline')
+    f.write_text('---\nname: "ris-fusion-gateway-skill"\ndescription: x\n---\n# Body\nline', encoding="utf-8")
     assert skill_name(f) == "ris-fusion-gateway-skill" and skill_body(f).startswith("# Body")
     g = tmp_path / "other" / "SKILL.md"
     g.parent.mkdir()
-    g.write_text("# no front matter")
+    g.write_text("# no front matter", encoding="utf-8")
     assert skill_name(g) == "other"                                           # falls back to the folder name
     rt = prepare_runtime(f, tmp_path / "rt")
     dest = rt / ".claude" / "skills" / "ris-fusion-gateway-skill" / "SKILL.md"
     assert dest.read_bytes() == f.read_bytes()
-    f.write_text(f.read_text() + "\nmore")
+    f.write_text(f.read_text(encoding="utf-8") + "\nmore", encoding="utf-8")
     prepare_runtime(f, tmp_path / "rt")                                       # a changed skill is refreshed
-    assert dest.read_text().endswith("more")
+    assert dest.read_text(encoding="utf-8").endswith("more")
 
 
 def test_skill_mode_falls_back_to_none_without_a_file(tmp_path):
     from bridge.config import Settings
     assert Settings(skill_mode="native").effective_skill_mode == "none"
-    f = tmp_path / "SKILL.md"; f.write_text("x")
+    f = tmp_path / "SKILL.md"; f.write_text("x", encoding="utf-8")
     assert Settings(skill_mode="native", planner_skill=f).effective_skill_mode == "native"
     assert Settings(skill_mode="none", planner_skill=f).effective_skill_mode == "none"
 
@@ -80,7 +80,7 @@ def test_origin_duplicates_and_shell_overrides_are_reported(tmp_path, monkeypatc
     import bridge.config as C
     f = tmp_path / ".env"
     f.write_text("ORACLE_FUSION_BASE_URL=https://YOUR-NONPROD-POD.fa.ocs.oraclecloud.com\nORACLE_USERNAME=svc\n"
-                 "ORACLE_FUSION_BASE_URL=https://real-dev1.fa.ocs.oraclecloud.com\nMODEL=claude-haiku-5-5\n")
+                 "ORACLE_FUSION_BASE_URL=https://real-dev1.fa.ocs.oraclecloud.com\nMODEL=claude-haiku-5-5\n", encoding="utf-8")
     for k in ("ORACLE_FUSION_BASE_URL", "ORACLE_USERNAME", "MODEL"):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setattr(C, "_FILE_KEYS", {})
@@ -94,7 +94,7 @@ def test_origin_duplicates_and_shell_overrides_are_reported(tmp_path, monkeypatc
     assert C.env_conflicts(f, ("ORACLE_USERNAME",)) == []
     # a shell variable that differs from the file
     g = tmp_path / "g.env"
-    g.write_text("ORACLE_USERNAME=from-file\n")
+    g.write_text("ORACLE_USERNAME=from-file\n", encoding="utf-8")
     monkeypatch.setattr(C, "_FILE_KEYS", {})
     monkeypatch.setenv("ORACLE_USERNAME", "from-shell")
     C.load_env_file(g)
@@ -117,7 +117,7 @@ def test_the_session_settings_have_sensible_defaults_and_come_from_the_environme
 def test_origin_says_whether_the_shell_value_hides_the_file(tmp_path, monkeypatch):
     import bridge.config as C
     f = tmp_path / ".env"
-    f.write_text("ORACLE_USERNAME=svc\nORACLE_PASSWORD=pw\n")
+    f.write_text("ORACLE_USERNAME=svc\nORACLE_PASSWORD=pw\n", encoding="utf-8")
     monkeypatch.setattr(C, "_FILE_KEYS", {})
     monkeypatch.setenv("ORACLE_USERNAME", "svc")                      # the shell already holds the same value
     monkeypatch.setenv("ORACLE_PASSWORD", "other")                    # ... and a different one here
@@ -135,7 +135,7 @@ def test_the_recipes_file_is_found_by_default_and_by_environment(tmp_path, monke
     monkeypatch.delenv("RECIPES_PATH", raising=False)
     assert load_settings(env_file=None).recipes_path is None                      # no file, no recipes
     (tmp_path / "skill").mkdir()
-    (tmp_path / "skill" / "recipes.md").write_text("- a note")
+    (tmp_path / "skill" / "recipes.md").write_text("- a note", encoding="utf-8")
     assert str(load_settings(env_file=None).recipes_path).replace("\\", "/").endswith("skill/recipes.md")
     monkeypatch.setenv("RECIPES_PATH", str(tmp_path / "other.md"))
     assert load_settings(env_file=None).recipes_path == tmp_path / "other.md"
@@ -154,7 +154,7 @@ def test_every_path_belongs_to_the_project_not_to_the_folder_the_bot_was_started
         p = getattr(s, name)
         assert p is not None and p.is_absolute() and str(p).startswith(str(C.ROOT)), (name, p)
     assert s.planner_skill.is_file() and s.recipes_path.is_file()
-    (C.ROOT / ".env.test-marker").write_text("TEST_MARKER_VALUE=from-project-root\n")
+    (C.ROOT / ".env.test-marker").write_text("TEST_MARKER_VALUE=from-project-root\n", encoding="utf-8")
     try:
         monkeypatch.delenv("TEST_MARKER_VALUE", raising=False)
         C.load_settings(env_file=".env.test-marker")                # a relative env file is looked up in the project folder
@@ -208,13 +208,13 @@ def test_a_renamed_skill_does_not_leave_its_old_folder_behind(tmp_path):
     skills = tmp_path / "rt" / ".claude" / "skills"
     old = skills / "RIS_Fusion_Gateway-Skill"
     old.mkdir(parents=True)
-    (old / "SKILL.md").write_text("OLD CONTENT")
-    (skills / "stray-file.txt").write_text("not a folder")
+    (old / "SKILL.md").write_text("OLD CONTENT", encoding="utf-8")
+    (skills / "stray-file.txt").write_text("not a folder", encoding="utf-8")
     f = tmp_path / "SKILL.md"
-    f.write_text('---\nname: ris-fusion-gateway-skill\ndescription: d\n---\nNEW CONTENT')
+    f.write_text('---\nname: ris-fusion-gateway-skill\ndescription: d\n---\nNEW CONTENT', encoding="utf-8")
     prepare_runtime(f, tmp_path / "rt")
     assert sorted(p.name for p in skills.iterdir() if p.is_dir()) == ["ris-fusion-gateway-skill"]
-    assert (skills / "ris-fusion-gateway-skill" / "SKILL.md").read_text().endswith("NEW CONTENT")
+    assert (skills / "ris-fusion-gateway-skill" / "SKILL.md").read_text(encoding="utf-8").endswith("NEW CONTENT")
     assert (skills / "stray-file.txt").exists()                                  # only folders are cleaned
     prepare_runtime(f, tmp_path / "rt")                                          # running it twice changes nothing
     assert sorted(p.name for p in skills.iterdir() if p.is_dir()) == ["ris-fusion-gateway-skill"]

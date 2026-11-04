@@ -10,14 +10,14 @@ TOOLS_JSON = Path(__file__).with_name("tools_inspected.json")
 
 def test_every_inspected_tool_is_classified():
     """All 59 tools in the bundle are known: a bundle upgrade that adds one fails here."""
-    names = {t["name"] for t in json.loads(TOOLS_JSON.read_text())}
+    names = {t["name"] for t in json.loads(TOOLS_JSON.read_text(encoding="utf-8"))}
     assert len(names) == 59
     unknown = names - P.KNOWN
     assert not unknown, f"unclassified tools (denied by default, review them): {sorted(unknown)}"
 
 
 def test_no_stale_names_in_policy():
-    names = {t["name"] for t in json.loads(TOOLS_JSON.read_text())}
+    names = {t["name"] for t in json.loads(TOOLS_JSON.read_text(encoding="utf-8"))}
     assert not (P.KNOWN - names), f"policy names tools the bundle no longer has: {sorted(P.KNOWN - names)}"
 
 
@@ -74,3 +74,17 @@ def test_the_refusal_of_profile_tools_says_that_names_are_still_available():
         d = P.classify(P.PREFIX + tool)
         assert d.verdict == "deny" and "names are" in d.reason.lower() and "PersonNumber,DisplayName" in d.reason
         assert "Pay, bank, ID-document and user-account data are not available" in d.reason
+
+
+def test_an_or_lookup_on_workers_is_recognised_but_other_reads_are_not():
+    """Ten person numbers joined with 'or' returned one person on this pod: the model must ask for one person per call."""
+    pre = P.PREFIX
+    w = lambda q, res="workers", tool="query_resource": P.workers_or_lookup(pre + tool, {"resource": res, "q": q})
+    assert w("PersonNumber = '1' or PersonNumber = '2'") and w("PersonNumber = 1 OR PersonNumber = 2") and w("a = 1\nor b = 2")
+    assert not w("PersonNumber = '1'") and not w("PersonNumber = '1' and AssignmentStatus = 'ACTIVE'")
+    assert not w("DisplayName = 'Mohamed or Ali'")                                    # an 'or' inside a quoted value is just text
+    assert not w("PersonNumber = '1' or PersonNumber = '2'", res="absences")           # only the resource that was checked
+    assert not w("PersonNumber = '1' or PersonNumber = '2'", tool="search_invoices")
+    assert not P.workers_or_lookup(pre + "query_resource", {"resource": "workers"})   # no filter at all
+    assert not P.workers_or_lookup(pre + "query_resource", {"resource": "workers", "q": None})
+    assert "ONE person per call" in P.WORKERS_OR_REASON and "FIRST person" in P.WORKERS_OR_REASON

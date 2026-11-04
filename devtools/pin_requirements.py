@@ -15,6 +15,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from bridge.logsafe import safe_streams     # noqa: E402
+safe_streams()
+
 from bridge.config import ROOT                                                    # noqa: E402
 from bridge.pins import check_pins, constraints_text, installed_versions, pin_requirements   # noqa: E402
 

@@ -150,6 +150,8 @@ class RunContext:
             hit = P.touches_sensitive_resource(tool_input)
             if hit:
                 return await self._deny(tool_name, tool_input, f"{hit} holds pay or identity data, which is not available")
+        if d.verdict == "needs_plan" and P.workers_or_lookup(tool_name, tool_input):
+            return await self._deny(tool_name, tool_input, P.WORKERS_OR_REASON)
         if d.verdict == "needs_plan":
             limit = tool_input.get("limit")
             if isinstance(limit, (int, float)) and limit > self.settings.max_rows_per_call:

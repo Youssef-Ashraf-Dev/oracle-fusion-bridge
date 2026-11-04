@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from .textio import read_text
+
 
 ROOT = Path(__file__).resolve().parents[1]      # the project folder: .env, data/, vendor/ and skill/ are found here, wherever the bot is started
 
@@ -95,7 +97,7 @@ _FILE_KEYS: dict[str, int] = {}          # setting name -> the .env line it was 
 def _parse_env_file(path: Path) -> list[tuple[int, str, str]]:
     """(line number, key, value) for every KEY=VALUE line, in file order."""
     out: list[tuple[int, str, str]] = []
-    for n, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+    for n, raw in enumerate(read_text(path).splitlines(), 1):
         line = raw.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue

@@ -6,6 +6,8 @@ not named here, including any tool a future bundle version adds, is denied.
 """
 from __future__ import annotations
 
+import re
+
 from dataclasses import dataclass
 
 SERVER = "fusion"          # MCP server name; tools appear as mcp__fusion__<tool>
@@ -90,6 +92,20 @@ class Decision:
 
 def bare(tool_name: str) -> str:
     return tool_name[len(PREFIX):] if tool_name.startswith(PREFIX) else tool_name
+
+
+_OR_WORD = re.compile(r"(?i)\sor\s")
+WORKERS_OR_REASON = ("a query on workers that joins people with 'or' returns only the FIRST person on this pod (checked: ten person "
+                     "numbers in one query returned one). Ask for ONE person per call: q PersonNumber = '<number>', fields "
+                     "PersonNumber,DisplayName. Up to 10 such calls fit in the same approved plan step.")
+
+
+def workers_or_lookup(tool_name: str, tool_input: dict) -> bool:
+    """True for a generic HR read on workers whose filter joins conditions with 'or' (an 'or' inside a quoted value does not count)."""
+    if bare(tool_name) != "query_resource" or str(tool_input.get("resource", "")).strip().lower() != "workers":
+        return False
+    q = re.sub(r"'[^']*'", "''", str(tool_input.get("q") or ""))
+    return bool(_OR_WORD.search(q))
 
 
 def classify(tool_name: str, allow_sensitive: bool = False) -> Decision:

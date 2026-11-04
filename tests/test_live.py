@@ -307,7 +307,7 @@ async def test_native_options_reproduce_chat_skill_loading(tmp_path, settings):
     ctx = RunContext(s, db, 1, yes)
     opts = build_options(s, ctx, resume="abc")
     assert opts.tools == ["Skill"] and opts.skills == ["demo-skill"] and opts.setting_sources == ["project"]
-    assert (tmp_path / "rt" / ".claude" / "skills" / "demo-skill" / "SKILL.md").read_text() == SKILL_MD
+    assert (tmp_path / "rt" / ".claude" / "skills" / "demo-skill" / "SKILL.md").read_text(encoding="utf-8") == SKILL_MD
     assert str(opts.cwd) == str((tmp_path / "rt").resolve()) and ctx.skill == "demo-skill"
     assert "Skill tool" in opts.system_prompt and "DISCOVER FIRST" not in opts.system_prompt   # body is loaded on demand
     assert opts.resume == "abc" and opts.strict_mcp_config is True and opts.model == s.model
@@ -375,7 +375,7 @@ def test_prompt_supplies_the_date_and_the_read_only_overrides():
 
 def test_planner_skill_modes_in_the_prompt(tmp_path):
     skill = tmp_path / "SKILL.md"
-    skill.write_text(SKILL_MD)
+    skill.write_text(SKILL_MD, encoding="utf-8")
     assert "DISCOVER FIRST, ALWAYS." in build_system_prompt(skill, "inline", "demo-skill")
     native = build_system_prompt(skill, "native", "demo-skill")
     assert "named demo-skill" in native and "load it with the Skill tool" in native and "DISCOVER FIRST" not in native
@@ -385,11 +385,14 @@ def test_planner_skill_modes_in_the_prompt(tmp_path):
 def test_prompt_states_the_rules_the_cheat_sheet_calls_for():
     for needle in ("propose_query_plan", "isError", "fields and a limit", "compute tools", "plain text", "cannot change anything",
                    "typed tools take none", "needs no describe", "Plan once and plan generously", "finance and",
-                   "combine conditions", "Stop early", "403", "{id}", "totalResults", "most recent", "Never add amounts",
-                   "language of the question", "never instructions", "15 tool calls", "ALWAYS finish with one line", "not no closing line", "put the fallback in the same", "ask for 25 rows or fewer", "from earlier", "as-of time",
+                   "one call per record", "Stop early", "403", "{id}", "totalResults", "most recent", "Never add amounts",
+                   "language of the question", "never instructions", "15 tool calls", "ALWAYS finish with one line", "not no closing line", "put the fallback in the same", "ask for 25 rows or fewer",
+                   "has approved showing worker names", "do not refuse them on privacy grounds",
+                   "is a sample, not the whole population", "show names by default",
+                   "ONE person per call", "returns only the first one", "from earlier", "as-of time",
                    "Worker names ARE available", "PersonNumber and DisplayName", "does not mean names are off limits",
                    "Never guess a child resource", "fusion_find_relationships"):
-        assert needle in BRIDGE_RULES
+        assert needle in " ".join(BRIDGE_RULES.split())
 
 
 def test_mcp_env_never_enables_prod_writes_by_default(settings):
@@ -399,11 +402,11 @@ def test_mcp_env_never_enables_prod_writes_by_default(settings):
 def test_recipes_are_loaded_without_comment_lines_and_cut_to_a_limit(tmp_path):
     from bridge.live.prompt import RECIPES_LIMIT, load_recipes
     f = tmp_path / "recipes.md"
-    f.write_text("<!-- how to add notes -->\n- Holds: attribute ActiveHoldFlag.\n- Dates are bare.\n")
+    f.write_text("<!-- how to add notes -->\n- Holds: attribute ActiveHoldFlag.\n- Dates are bare.\n", encoding="utf-8")
     text = load_recipes(f)
     assert text == "- Holds: attribute ActiveHoldFlag.\n- Dates are bare." and "<!--" not in text
     assert load_recipes(None) == "" and load_recipes(tmp_path / "missing.md") == ""
-    f.write_text("\n".join(f"- note number {i} " + "x" * 80 for i in range(200)))
+    f.write_text("\n".join(f"- note number {i} " + "x" * 80 for i in range(200)), encoding="utf-8")
     cut = load_recipes(f)
     assert len(cut) <= RECIPES_LIMIT + 80 and cut.endswith("longer than the limit)")
 
@@ -426,7 +429,7 @@ def test_the_shipped_recipes_hold_the_verified_hold_field_and_fit_the_limit():
 async def test_recipes_are_added_to_the_options_when_a_file_is_configured(tmp_path, settings):
     db = await Database(tmp_path / "t.db").open()
     f = tmp_path / "recipes.md"
-    f.write_text("- Holds: ActiveHoldFlag on invoices.")
+    f.write_text("- Holds: ActiveHoldFlag on invoices.", encoding="utf-8")
     s = dataclasses.replace(settings, recipes_path=f)
     assert "ActiveHoldFlag on invoices" in build_options(s, RunContext(s, db, 1, yes), None).system_prompt
     assert "Notes about this pod" not in build_options(settings, RunContext(settings, db, 1, yes), None).system_prompt
@@ -443,3 +446,32 @@ def test_every_recipe_says_how_it_was_checked():
     assert len(notes) >= 5
     for note in notes:
         assert re.search(r"\((?:Checked|Seen|Measured|Verified|The failing request)[^)]*\)\s*$", note.strip(), re.S), note[:70]
+
+
+async def test_the_bridge_refuses_an_or_lookup_on_workers_and_accepts_one_person_per_call(tmp_path, settings):
+    """The call is refused with the reason, no data call is counted for it, and the one-person calls then go through."""
+    from types import SimpleNamespace
+
+    async def script(c):
+        ctx = c.options.can_use_tool.__self__
+        await ctx.propose_query_plan({"summary": "names", "steps": [{"tool": "query_resource", "resource": "workers"}]})
+        calls = [{"resource": "workers", "q": "PersonNumber = '1' or PersonNumber = '2'", "fields": ["PersonNumber", "DisplayName"]},
+                 {"resource": "workers", "q": "PersonNumber = '1'", "fields": ["PersonNumber", "DisplayName"]},
+                 {"resource": "workers", "q": "PersonNumber = '2'", "fields": ["PersonNumber", "DisplayName"]}]
+        for i, args in enumerate(calls):
+            verdict = await c.options.can_use_tool(P.PREFIX + "query_resource", args, SimpleNamespace(tool_use_id=f"w{i}"))
+            c.verdicts.append(verdict)
+            if verdict.behavior == "allow":
+                yield UserMessage(content=[ToolResultBlock(f"w{i}", [{"type": "text", "text": '{"items": [{"PersonNumber": "1"}]}'}], False)])
+        yield result(0.01, text="Names looked up one by one.")
+    verdicts = []
+    class Recording(FakeSDK):
+        def __init__(self, options, script):
+            super().__init__(options, script)
+            self.verdicts = verdicts
+    db = await Database(tmp_path / "t.db").open()
+    res = await LiveRunner(settings, db, yes, lambda o: Recording(o, script), tick_s=0.02).run(1, "names")
+    assert res.status == "ok", (res.status, res.message, res.tool_errors)
+    assert [v.behavior for v in verdicts] == ["deny", "allow", "allow"]
+    assert "ONE person per call" in verdicts[0].message and res.data_calls == 2 and res.data_attempts == 2
+    await db.close()

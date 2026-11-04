@@ -1,0 +1,44 @@
+# Runs the whole test suite on Windows and on Linux for every push and pull request.
+# Why both: the team works on Windows, the container runs Linux, and the code was first written on Linux. A test that signals its own
+# process, a file saved with a BOM, or a legacy default encoding behave differently on Windows, and only a real Windows run shows it.
+name: tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false                        # a failure on one system must not hide the result on the other
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - uses: astral-sh/setup-uv@v5            # the MCP is started with `uv run`
+
+      - name: Install the packages at the pinned versions
+        # The same command the Docker image will use: it also shows, before Day 3, whether any pin cannot be installed on Linux.
+        run: python -m pip install -r requirements-dev.txt -c constraints.txt
+
+      - name: Run the tests (offline, plus the real MCP bundle and the real engine against a fake pod)
+        run: python -m pytest -q
+        env:
+          RUN_MCP_TESTS: "1"

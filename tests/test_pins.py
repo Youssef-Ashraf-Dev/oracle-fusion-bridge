@@ -67,14 +67,14 @@ def test_the_preflight_reports_whether_the_environment_and_the_pins_are_in_order
     by = lambda checks: {c.name: c for c in checks}
     v = installed_versions()
     good = tmp_path / "good.txt"
-    good.write_text(f"pytest=={v['pytest']}\n")
+    good.write_text(f"pytest=={v['pytest']}\n", encoding="utf-8")
     assert by(check_runtime(lambda n: "/bin/uv", good))["Dependencies pinned and matching"].status == PASS
     loose = tmp_path / "loose.txt"
-    loose.write_text("pytest>=8\npytest-asyncio>=0.24\n")
+    loose.write_text("pytest>=8\npytest-asyncio>=0.24\n", encoding="utf-8")
     c = by(check_runtime(lambda n: "/bin/uv", loose))["Dependencies pinned and matching"]
     assert c.status == WARN and "2 requirement(s) not pinned" in c.detail and "pin_requirements.py --write" in c.detail
     stale = tmp_path / "stale.txt"
-    stale.write_text("pytest==0.0.1\n")
+    stale.write_text("pytest==0.0.1\n", encoding="utf-8")
     assert "pinned 0.0.1, installed" in by(check_runtime(lambda n: "/bin/uv", stale))["Dependencies pinned and matching"].detail
     monkeypatch.setattr(sys, "prefix", sys.base_prefix)                       # not inside a virtual environment
     venv = by(check_runtime(lambda n: "/bin/uv", good))["Virtual environment active"]

@@ -41,7 +41,7 @@ def test_each_failure_is_shown_without_the_host_or_boilerplate():
 
 def test_field_map_keys_are_read_from_a_python_file_without_importing_it(tmp_path):
     f = tmp_path / "maps.py"
-    f.write_text('import os_that_does_not_exist\nX = 1\nA_FIELD_MAP = {"One": "one", "Two": "two"}\n')
+    f.write_text('import os_that_does_not_exist\nX = 1\nA_FIELD_MAP = {"One": "one", "Two": "two"}\n', encoding="utf-8")
     assert field_map_keys(f, "A_FIELD_MAP") == ["One", "Two"]
     with pytest.raises(KeyError):
         field_map_keys(f, "NOPE")
@@ -52,3 +52,19 @@ def test_the_ledger_fields_in_the_failing_request_are_the_mcps_own_defaults():
     """The S8 error listed exactly these fields: the 400 comes from the MCP's list_ledgers tool, not from a model's guess."""
     assert field_map_keys(VENDOR, "LEDGER_FIELD_MAP") == ["LedgerName", "LedgerShortName", "LedgerType", "CurrencyCode",
                                                           "ChartOfAccountsStructureId", "AccountingCalendar", "BudgetaryControlEnabledFlag"]
+
+
+def test_an_hr_resource_is_probed_with_the_hr_tool_and_fields_as_a_list():
+    """The bot guessed HR field names (PersonNumber, personNumber, absenceDispStatus ...): this tells which ones the pod accepts."""
+    seen = []
+
+    async def call(name, args):
+        seen.append((name, args))
+        names = args["fields"]
+        if "PersonNumber" in names:
+            raise ToolError("Error executing tool: [400] : Unknown attribute PersonNumber")
+        return {"items": [{}]}
+    r = asyncio.run(probe_fields(call, "absences", ["personNumber", "PersonNumber", "startDate"], hr=True))
+    assert r["good"] == ["personNumber", "startDate"] and r["bad"] == ["PersonNumber"] and r["together_ok"] is False
+    assert all(n == "query_resource" and isinstance(a["fields"], list) and a["limit"] == 1 for n, a in seen)
+    assert seen[-1][1]["fields"] == ["personNumber", "PersonNumber", "startDate"]               # then all together

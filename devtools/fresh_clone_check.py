@@ -17,6 +17,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from bridge.logsafe import safe_streams     # noqa: E402
+safe_streams()
+
 from bridge.config import ROOT                       # noqa: E402
 from bridge.repocheck import NotAGitRepo, ignored_but_present, uncommitted     # noqa: E402
 
@@ -60,9 +63,9 @@ if a.run:
         with zipfile.ZipFile(zpath) as z:
             z.extractall(out)
         print(f"\nExported the last commit to a temp folder ({sum(1 for _ in out.rglob('*') if _.is_file())} files). Starting the real MCP there...")
-        env = {**os.environ, "RUN_MCP_TESTS": "1"}
+        env = {**os.environ, "RUN_MCP_TESTS": "1", "PYTHONUTF8": "1"}
         p = subprocess.run([sys.executable, "-m", "pytest", "tests/test_preflight.py", "-q", "-p", "no:cacheprovider", "-k", "real_bundle"],
-                           cwd=out, env=env, capture_output=True, text=True, timeout=900)
+                           cwd=out, env=env, capture_output=True, text=True, timeout=900, encoding="utf-8", errors="replace")
         lines = [ln for ln in (p.stdout + p.stderr).splitlines() if ln.strip()]
         print("\n".join("  " + ln for ln in (lines[-3:] if p.returncode == 0 else lines[-40:])))
         if p.returncode != 0:

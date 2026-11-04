@@ -22,6 +22,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from bridge.logsafe import safe_streams     # noqa: E402
+safe_streams()
+
 from bridge.config import load_settings                                   # noqa: E402
 from bridge.preflight import (FAIL as PF_FAIL, WARN as PF_WARN, check_anthropic, check_config, check_mcp,  # noqa: E402
                               check_runtime, check_sdk)
@@ -38,10 +41,10 @@ def say(text: str = "") -> None:
 
 def stage_tests() -> Stage:
     say("[1/5] Offline tests (includes the real engine and the real MCP bundle)...")
-    env = {**os.environ, "RUN_MCP_TESTS": "1"}
+    env = {**os.environ, "RUN_MCP_TESTS": "1", "PYTHONUTF8": "1"}      # the child prints UTF-8, and we read it as UTF-8
     t0 = time.time()
     p = subprocess.run([sys.executable, "-m", "pytest", "-q", "--no-header", "-p", "no:cacheprovider"], cwd=ROOT, env=env,
-                       capture_output=True, text=True, timeout=1200)
+                       capture_output=True, text=True, timeout=1200, encoding="utf-8", errors="replace")
     out = p.stdout + p.stderr
     passed, failed, skipped, names = parse_pytest(out)
     (ROOT / "data" / "runall").mkdir(parents=True, exist_ok=True)

@@ -12,6 +12,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from bridge.logsafe import safe_streams     # noqa: E402
+safe_streams()
+
 from mcp import ClientSession, StdioServerParameters           # noqa: E402
 from mcp.client.stdio import stdio_client                       # noqa: E402
 

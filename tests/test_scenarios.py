@@ -24,9 +24,9 @@ def out(answer="ok 3", **kw):
 
 def test_every_scenario_names_the_problem_it_guards_and_ids_are_unique():
     sc = scenarios()
-    assert len({s.sid for s in sc}) == len(sc) >= 16 and [x.sid for x in sc] == [f"S{i}" for i in range(1, len(sc) + 1)]
+    assert len({s.sid for s in sc}) == len(sc) >= 18 and [x.sid for x in sc] == [f"S{i}" for i in range(1, len(sc) + 1)]
     assert all(s.guards and s.title and s.steps for s in sc)
-    assert sorted(s.sid for s in sc if s.soft) == ["S10", "S13", "S14", "S15", "S16", "S4"]         # only the pod-dependent ones are soft
+    assert sorted(s.sid for s in sc if s.soft) == ["S10", "S13", "S14", "S15", "S16", "S17", "S18", "S4"]         # only the pod-dependent ones are soft
 
 
 def test_markdown_in_a_phone_answer_is_flagged():
@@ -279,3 +279,54 @@ async def test_recording_approver_records_every_plan_and_can_approve_or_ask():
     async def ask(text): return False
     manual = RecordingApprover("ask", ask)
     assert await manual(plan) is False and manual.plans == [plan.render()]
+
+
+def test_the_pod_and_date_line_is_expected_only_when_data_was_read(settings):
+    """S13 warned 'host missing, date missing' on a clarifying question that read nothing."""
+    question = "Top by what: amount, date or supplier? Tell me which and I will look."
+    asked = run_check("S13", settings, question)                                       # no data, no plan, no footer
+    assert "pod and as-of line" not in asked and asked["asked one question or stated its assumption"].status == PASS
+    read = run_check("S13", settings, "I took 'top' to mean the largest amounts. 1. INV-1 100", plans=["p"], data_calls=1)
+    assert read["pod and as-of line"].status == WARN                                   # data was read but the answer does not say from where
+    dated = run_check("S13", settings, "I took 'top' to mean the largest amounts. 1. INV-1 100" + FOOTER, plans=["p"], data_calls=1)
+    assert dated["pod and as-of line"].status == PASS
+
+
+def run_two(settings, second_answer, second_plans=(), second_data=0):
+    first = Outcome("q1", LiveResult(status="ok", answer="21267, 26768, 15706" + FOOTER, data_calls=1, duration_s=20), ["p"])
+    second = Outcome("q2", LiveResult(status="ok", answer=second_answer, data_calls=second_data, duration_s=10), list(second_plans))
+    return {c.name: c for c in by_id("S17").check([first, second], settings)}
+
+
+def test_s17_fails_when_a_sample_is_passed_off_as_the_whole_answer(settings):
+    """The transcript: 'Who took sick leaves in last September?' was answered from the 10 most recent rows, with no plan, as complete."""
+    bad = run_two(settings, "Two employees started sick leave in September 2026: 21267 and 26768." + FOOTER)
+    assert bad["did not pass a sample off as the whole answer"].status == FAIL
+    reread = run_two(settings, "Nine people took sick leave in September 2026: ..." + FOOTER, second_plans=["p"], second_data=1)
+    assert reread["did not pass a sample off as the whole answer"].status == PASS
+    for honest in ("Only the 5 rows I already fetched are covered: 21267 and 26768 are in September.",
+                   "From the earlier list of the 5 most recent, 21267 is in September. This is a sample, not everyone.",
+                   "I can only see those results; the answer is limited to the rows already fetched."):
+        assert run_two(settings, honest + FOOTER)["did not pass a sample off as the whole answer"].status == PASS, honest
+
+
+def test_s18_wants_the_names_looked_up_in_the_same_plan(settings):
+    def run(answer, tool_inputs):
+        calls = [{"name": "query_resource", "input": i} for i in tool_inputs]
+        o = Outcome("q", LiveResult(status="ok", answer=answer, data_calls=2, tool_calls=calls, duration_s=20), ["p"])
+        return {c.name: c for c in by_id("S18").check([o], settings)}
+    good = run("1. 17894 Mohamed S. R.: Annual Leave" + FOOTER, ['{"resource": "absences"}', '{"resource": "workers", "fields": ["PersonNumber", "DisplayName"]}'])
+    assert good["looked the names up in the same plan"].status == PASS
+    assert run("1. 17894: Annual Leave" + FOOTER, ['{"resource": "absences"}'])["looked the names up in the same plan"].status == WARN
+    assert run("I can't give names from this deployment." + FOOTER, ['{"resource": "absences"}'])["did not refuse worker names"].status == FAIL
+
+
+def test_s18_notices_an_attempt_to_look_people_up_with_or(settings):
+    def run(tool_inputs):
+        calls = [{"name": "query_resource", "input": i} for i in tool_inputs]
+        o = Outcome("q", LiveResult(status="ok", answer="1. 17894 A. B." + FOOTER, data_calls=2, tool_calls=calls, duration_s=20), ["p"])
+        return {c.name: c for c in by_id("S18").check([o], settings)}
+    ok = run(['{"resource": "absences"}', '{"resource": "workers", "q": "PersonNumber = \'1\'"}', '{"resource": "workers", "q": "PersonNumber = \'2\'"}'])
+    assert ok["asked for one person per call, not an or query"].status == PASS
+    bad = run(['{"resource": "workers", "q": "PersonNumber = \'1\' or PersonNumber = \'2\'"}'])
+    assert bad["asked for one person per call, not an or query"].status == WARN

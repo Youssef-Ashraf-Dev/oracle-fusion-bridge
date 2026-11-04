@@ -6,6 +6,7 @@ the noisy loggers are turned down, and a filter blanks anything that looks like 
 from __future__ import annotations
 
 import logging
+from logging.handlers import RotatingFileHandler
 import re
 
 _PATTERNS = [(re.compile(r"(?<!\d)\d{6,12}:[A-Za-z0-9_-]{30,}"), "<telegram-token>"),
@@ -33,25 +34,42 @@ class RedactSecrets(logging.Filter):
 FORMAT = "%(asctime)s %(name)s %(levelname)s %(message)s"
 
 
-def configure_logging(level: int = logging.INFO, log_dir=None) -> None:
-    """Console plus, when log_dir is given, a rotating file (2 MB x 5). Every handler blanks secrets first."""
+def safe_streams() -> None:
+    """Make a character the console cannot show print as a replacement instead of crashing the tool. A Windows console in a legacy
+    code page, or output redirected to a file or pipe, cannot show Arabic names that come back from the pod."""
     import sys
     for stream in (sys.stdout, sys.stderr):
-        if hasattr(stream, "reconfigure"):                    # a Windows console in cp1252 would raise on Arabic text
+        if hasattr(stream, "reconfigure"):
             try:
                 stream.reconfigure(errors="replace")
             except Exception:
                 pass
+
+
+class SafeRotatingFileHandler(RotatingFileHandler):
+    """On Windows a file that another program has open (an editor, Get-Content -Wait) cannot be renamed, so the usual rotation raises.
+    Keep writing to the same file instead of losing the record, and try again at the next record."""
+
+    def doRollover(self) -> None:
+        try:
+            super().doRollover()
+        except PermissionError:
+            if self.stream is None:
+                self.stream = self._open()
+
+
+def configure_logging(level: int = logging.INFO, log_dir=None) -> None:
+    """Console plus, when log_dir is given, a rotating file (2 MB x 5). Every handler blanks secrets first."""
+    safe_streams()
     logging.basicConfig(level=level, format=FORMAT)
     root = logging.getLogger()
     if log_dir is not None:
-        from logging.handlers import RotatingFileHandler
         from pathlib import Path
         Path(log_dir).mkdir(parents=True, exist_ok=True)
-        fh = RotatingFileHandler(Path(log_dir) / "bridge.log", maxBytes=2_000_000, backupCount=5, encoding="utf-8")
+        fh = SafeRotatingFileHandler(Path(log_dir) / "bridge.log", maxBytes=2_000_000, backupCount=5, encoding="utf-8")
         fh.setFormatter(logging.Formatter(FORMAT))
         root.addHandler(fh)
     for handler in root.handlers:
         handler.addFilter(RedactSecrets())
-    for noisy in ("httpx", "httpcore", "telegram.ext.Application", "hpack"):
+    for noisy in ("httpx", "httpcore", "telegram.ext.Application", "hpack"):        # these log every request URL, which carries the bot token
         logging.getLogger(noisy).setLevel(logging.WARNING)
