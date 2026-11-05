@@ -82,21 +82,40 @@ def test_when_fusion_itself_cannot_give_the_truth_the_result_is_a_warning_not_a_
 
 
 def test_the_shipped_cases_ask_for_one_number_and_call_the_right_tool_with_the_right_arguments():
+    from bridge.live import permissions as P
     cs = cases()
-    assert len({c.vid for c in cs}) == len(cs) >= 3 and all("just the number" in c.question for c in cs)
+    assert len({c.vid for c in cs}) == len(cs) >= 5 and all("just the number" in c.question for c in cs)
     log = []
 
     async def call(name, args):
         log.append((name, args))
         return {"items": [], "totalResults": 7}
     for c in cs:
-        assert asyncio.run(c.truth(call)) == 7
-    by = {(n, a["resource"]): a for n, a in log}
-    assert by[("fusion_query_resource", "invoices")] == {"resource": "invoices", "limit": 1, "totalResults": True}
-    assert by[("fusion_query_resource", "ledgersLOV")]["totalResults"] is True
-    hr = by[("query_resource", "absences")]
-    assert hr["total_results"] is True and hr["limit"] == 1 and "2025-01-01" in hr["q"] and "2025-12-31" in hr["q"] and "Sick%" in hr["q"]
-    assert ";" in hr["q"] and " and " not in hr["q"]                                   # the pod's HR filter joins with ';' and rejects 'and' with a 400
+        asyncio.run(c.truth(call))
+    fscm = [a for n, a in log if n == "fusion_query_resource"]
+    assert {"resource": "invoices", "limit": 1, "totalResults": True} in fscm
+    assert {"resource": "ledgersLOV", "limit": 1, "totalResults": True} in fscm
+    assert {"resource": "invoices", "q": "InvoiceDate >= '2026-01-01'", "limit": 1, "totalResults": True} in fscm
+    assert {"resource": "invoices", "q": "InvoiceDate >= '2026-02-01'", "limit": 1, "totalResults": True} in fscm
+    hr = [a for n, a in log if n == "query_resource"]
+    assert {"resource": "absences", "q": "startDate >= 2026-09-01", "limit": 1, "total_results": True} in hr
+    assert all(a["total_results"] is True and a["limit"] == 1 for a in hr)
+    # The pod collapses several conditions on one attribute to the last one: a verifier that sent such a filter would count the wrong thing exactly as
+    # the bot does and 'confirm' a wrong number. Use the bridge's own guard on EVERY call the verifier makes, so the two can never disagree.
+    for n, a in log:
+        assert P.repeated_filter_attribute(P.PREFIX + n, a) is None, (n, a)
+    assert all(" and " not in str(a.get("q", "")).lower() for _, a in log)
+
+
+def test_a_window_is_counted_as_the_difference_of_two_totals_each_with_one_date_condition():
+    seen = []
+
+    async def call(name, args):
+        seen.append(args["q"])
+        return {"totalResults": 7778 if "2025-01-01" in args["q"] else 3258}
+    v4 = next(c for c in cases() if c.vid == "V4")
+    assert asyncio.run(v4.truth(call)) == 4520                                      # sick leave starting in 2025, the figure the bot gave
+    assert seen == ["absenceType LIKE 'Sick%';startDate >= 2025-01-01", "absenceType LIKE 'Sick%';startDate >= 2026-01-01"]
 
 
 def test_the_report_shows_what_fusion_said_and_what_the_bot_said_without_the_answer():
@@ -104,3 +123,26 @@ def test_the_report_shows_what_fusion_said_and_what_the_bot_said_without_the_ans
     text = render([(c, Verdict("VX", PASS, 4520, 4523, [4523], "the data changed", 0.012, 9)),
                    (c, Verdict("VX", FAIL, 4520, 4520, [4250, 2025], "the bot gave 4250; Fusion says 4520", 0.02, 11))])
     assert "| VX X | PASS | 4520 then 4523 | 4523 |" in text and "| VX X | FAIL | 4520 | 4250, 2025 |" in text
+
+
+def test_a_failed_case_keeps_the_bots_answer_in_memory_but_the_report_never_holds_it():
+    """Whether 7,778 was said as fact or as 'all sick leave, not 2025' decides how serious a failure is: the answer must be readable on request."""
+    v = run(case(4520, 4520), "There are 7,778 sick leave absences in 2025.")
+    assert v.status == FAIL and v.answer == "There are 7,778 sick leave absences in 2025."
+    assert "7,778 sick leave" not in render([(case(1), v)])
+    import subprocess, sys
+    from pathlib import Path
+    out = subprocess.run([sys.executable, str(Path(__file__).resolve().parents[1] / "devtools" / "verify_answers.py"), "--help"],
+                         capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60).stdout
+    assert "--show-answers" in out
+
+
+def test_invoices_in_a_month_are_counted_as_the_difference_of_two_totals_each_with_one_date_condition():
+    seen = []
+
+    async def call(name, args):
+        seen.append((name, args["q"]))
+        return {"totalResults": 8519 if "2026-01-01" in args["q"] else 7301}
+    v5 = next(c for c in cases() if c.vid == "V5")
+    assert asyncio.run(v5.truth(call)) == 1218                                          # dated from 1 January minus dated from 1 February
+    assert seen == [("fusion_query_resource", "InvoiceDate >= '2026-01-01'"), ("fusion_query_resource", "InvoiceDate >= '2026-02-01'")]

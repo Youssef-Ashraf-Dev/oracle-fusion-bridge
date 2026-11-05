@@ -3,27 +3,28 @@
      for example (Checked with devtools/describe_probe.py ...) or (Seen in scenario S10 ...). A test refuses a note without one.
      Better still: add a scenario that exercises the note (S10 for holds, S16 for ledgers) and compare with and without the notes:
      python devtools/run_all.py --only S10,S16 --repeat 3 --skip-tests --no-recipes -->
-- Invoices on hold: the invoice record has the attribute ActiveHoldFlag. Use fusion_query_resource on invoices with a
-  filter on ActiveHoldFlag. There is no child resource called invoiceHolds or holds, and HoldFlag is not an invoice
-  field (it exists only on the invoiceInstallments child). Before filtering, read 3 rows with fields
-  InvoiceId,ActiveHoldFlag and limit 3 to see how the flag is written, then filter with that same value.
-  To count, ask for totalResults with limit 1. (Checked with devtools/describe_probe.py on the invoices description; scenario S10 passed with it.)
-- The description of invoices is about 41,000 tokens, too large to read: do not describe it. Child resources and actions
-  can be listed with fusion_find_relationships (source_resource invoices); real children include invoiceLines,
-  invoiceInstallments, invoiceDistributions and attachments. (Measured with devtools/describe_probe.py: 163,737 characters.)
-- HR absences: this pod rejects order_by on absences, so read a date window and sort the rows yourself. Dates in q are
-  written bare, like startDate >= 2025-01-01, not in quotes. (Seen in the pod's own error messages and in a working run.)
-- The HR resource emps returns 403 for this account: do not use it. Worker names come from query_resource on workers
-  (fields PersonNumber,DisplayName). (Seen in a run for emps; names from workers worked in scenario S9.)
-- Ledgers: the typed tool list_ledgers fails with 400 Bad Request on this pod, because the fields it hard-codes are not all
-  valid here. Do not use it. Describe ledgersLOV (it is small), then query it with fusion_query_resource using only
-  the attribute names the describe shows. (The failing request was read from the MCP's source and seen in five runs; the way
-  around it is not yet confirmed: scenario S16 tests it.)
-- Typed searches return wide rows: each invoice from search_invoices is about 1 KB, so limit 50 gave 61,152 characters and the
-  engine refused it as too large. Ask for 25 rows or fewer, or use fusion_query_resource with fields. (Seen in scenario S7: 61,152 characters were refused.)
-- Looking up names: a query on workers that joins people with or returns ONLY THE FIRST person. Ten person numbers in one query
-  returned 1, batches of 5 returned 2, and one person per call returned 10 of 10. Ask for one person per call (q PersonNumber = '<number>',
-  fields PersonNumber,DisplayName); the bridge refuses an or lookup on workers. (Checked with devtools/lookup_probe.py on this pod, twice with the same result.)
-- HR filters: join conditions with a semicolon, as in startDate >= 2025-01-01;startDate <= 2025-12-31;absenceType LIKE 'Sick%'. The word and does
-  not work: the pod answers 400, "cannot be created from string startDate <= 2025-12-31". (Seen in the pod's own 400 message in the first run of
-  devtools/verify_answers.py, and in scenario runs where the calls with a semicolon went through.)
+- Invoices on hold: the invoice attribute is ActiveHoldFlag. Use fusion_query_resource on invoices with a filter on it. There is no child
+  resource called invoiceHolds or holds, and HoldFlag exists only on the invoiceInstallments child. Before filtering, read 3 rows (fields
+  InvoiceId,ActiveHoldFlag, limit 3) to see how the flag is written, then filter with that value. To count, ask for totalResults with limit 1.
+  (Checked with devtools/describe_probe.py on the invoices description; scenario S10 passed with it.)
+- The description of invoices is about 41,000 tokens: do not describe it. List child resources and actions with fusion_find_relationships
+  (source_resource invoices); real children include invoiceLines, invoiceInstallments, invoiceDistributions and attachments.
+  (Measured with devtools/describe_probe.py: 163,737 characters.)
+- Filters, HR and finance: conditions on different attributes combine (join with ";"), but two on the SAME attribute collapse silently to the
+  last one, and so does a typed search given both date_from and date_to; the bridge refuses these. Send ONE condition per attribute: the lower
+  bound plus other attributes, then drop rows past the upper bound yourself. To COUNT a window, make two calls (limit 1, totals) and subtract
+  total(X >= FROM) minus total(X >= the day after TO). (Measured with devtools/query_probe.py on absences, 2026-11-04, and on invoices,
+  2026-11-05: InvoiceDate >= A;InvoiceDate <= B gave the total of <= B alone.)
+- HR absences: order_by is rejected: read the rows and sort them yourself. Dates are bare. Fields that work: personAbsenceEntryId, personNumber,
+  absenceType, startDate, endDate, absenceDispStatus; AbsenceId, PersonNumber and StartDate give a 400, and one bad name fails the whole call.
+  The word and gives a 400. (Seen with devtools/field_probe.py on 2026-11-05 and query_probe.py on 2026-11-04.)
+- The HR resource emps returns 403 for this account: do not use it. Worker names come from query_resource on workers (fields
+  PersonNumber,DisplayName). (Seen in a run for emps; names from workers worked in scenario S9.)
+- Ledgers: the typed tool list_ledgers fails with 400 on this pod (the fields it hard-codes are not all valid). Do not use it. Describe
+  ledgersLOV (it is small), then query it with fusion_query_resource using only the attribute names the describe shows. (Seen in five runs;
+  the way around it works: scenario S16 passed with it.)
+- Typed searches return wide rows (about 1 KB per invoice): limit 50 gave 61,152 characters and the engine refused it as too large. Ask for
+  25 rows or fewer, or use fusion_query_resource with fields. (Seen in scenario S7: 61,152 characters were refused.)
+- Looking up names: a query on workers that joins people with or returns ONLY THE FIRST person (10 numbers in one query gave 1, batches of 5
+  gave 2, one per call gave 10 of 10). Ask for one person per call (q PersonNumber = '<number>', fields PersonNumber,DisplayName); the bridge
+  refuses an or lookup on workers. (Checked with devtools/lookup_probe.py on this pod, twice with the same result.)

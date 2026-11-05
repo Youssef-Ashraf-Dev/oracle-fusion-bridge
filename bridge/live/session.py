@@ -153,6 +153,12 @@ class RunContext:
         if d.verdict == "needs_plan" and P.workers_or_lookup(tool_name, tool_input):
             return await self._deny(tool_name, tool_input, P.WORKERS_OR_REASON)
         if d.verdict == "needs_plan":
+            twice = P.repeated_filter_attribute(tool_name, tool_input)
+            if twice:
+                return await self._deny(tool_name, tool_input, P.repeated_filter_reason(twice, P.bare(tool_name) in P.DATE_RANGE_SEARCHES))
+            if P.absences_and_keyword(tool_name, tool_input):
+                return await self._deny(tool_name, tool_input, P.ABSENCES_AND_REASON)
+        if d.verdict == "needs_plan":
             limit = tool_input.get("limit")
             if isinstance(limit, (int, float)) and limit > self.settings.max_rows_per_call:
                 return await self._deny(tool_name, tool_input, f"limit {int(limit)} is too large: use "

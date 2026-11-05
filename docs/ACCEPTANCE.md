@@ -23,7 +23,7 @@ Not for production: a non-production pod, read-only, text only. Charts and dashb
 | 7 | Deployment | the Telegram walk-through (section C below) passes on the host; the bot restarts by itself; `data/` is backed up; a named person receives the budget alert | on the host |
 | 8 | Approvals | the data owner's approval is written down; each pilot user has been told what is logged | a note in the pilot file |
 
-A scenario that is not listed (S4, S10, S13, S14, S15, S17) is watched and reported, but does not block.
+A scenario that is not listed (S4, S10, S13, S14, S15, S17, S19) is watched and reported, but does not block.
 
 ## Pilot exit gate: may it be widened?
 

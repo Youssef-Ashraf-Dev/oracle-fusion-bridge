@@ -475,3 +475,49 @@ async def test_the_bridge_refuses_an_or_lookup_on_workers_and_accepts_one_person
     assert [v.behavior for v in verdicts] == ["deny", "allow", "allow"]
     assert "ONE person per call" in verdicts[0].message and res.data_calls == 2 and res.data_attempts == 2
     await db.close()
+
+
+async def test_a_date_range_or_the_word_and_is_refused_inside_a_run_and_a_valid_filter_is_allowed(tmp_path, settings):
+    log, current = {}, {}
+
+    async def script(c):
+        await current["r"].last_ctx.propose_query_plan({"summary": "sick leave", "steps": [{"tool": "query_resource", "resource": "absences"}]})
+        log["range"] = await c.options.can_use_tool(P.PREFIX + "query_resource", {"resource": "absences",
+                                                    "q": "startDate >= 2026-09-01;startDate <= 2026-09-30"}, None)
+        log["valid"] = await c.options.can_use_tool(P.PREFIX + "query_resource", {"resource": "absences",
+                                                    "q": "absenceType LIKE 'Sick%';startDate >= 2026-09-01"}, None)
+        log["and"] = await c.options.can_use_tool(P.PREFIX + "query_resource", {"resource": "absences",
+                                                  "q": "absenceType LIKE 'Sick%' and startDate >= 2026-09-01"}, None)
+        yield result(text="Done.")
+    db = await Database(tmp_path / "r.db").open()
+    runner = LiveRunner(settings, db, yes, lambda opts: FakeSDK(opts, script), tick_s=0.02)
+    current["r"] = runner
+    await runner.run(7, "who took sick leave in September")
+    await db.close()
+    assert log["range"].behavior == "deny" and "ONE condition per attribute" in log["range"].message and "startDate" in log["range"].message
+    assert log["valid"].behavior == "allow"
+    assert log["and"].behavior == "deny" and "rejects the word 'and'" in log["and"].message and "subtract the second total" in log["and"].message
+
+
+async def test_a_finance_date_pair_is_refused_inside_a_run_whether_typed_or_generic_and_single_dates_are_allowed(tmp_path, settings):
+    """The finance probe showed InvoiceDate >= A;InvoiceDate <= B returning the total of <= B alone, and the MCP's own search_invoices builds that pair."""
+    log, current = {}, {}
+
+    async def script(c):
+        await current["r"].last_ctx.propose_query_plan({"summary": "invoices in January", "steps": [
+            {"tool": "search_invoices"}, {"tool": "fusion_query_resource", "resource": "invoices"}]})
+        ask = lambda name, args: c.options.can_use_tool(P.PREFIX + name, args, None)
+        log["typed_pair"] = await ask("search_invoices", {"date_from": "2026-01-01", "date_to": "2026-01-31", "limit": 25})
+        log["typed_one"] = await ask("search_invoices", {"date_from": "2026-01-01", "limit": 25})
+        log["generic_pair"] = await ask("fusion_query_resource", {"resource": "invoices",
+                                        "q": "InvoiceDate >= '2026-01-01';InvoiceDate <= '2026-01-31'", "limit": 1, "totalResults": True})
+        log["generic_one"] = await ask("fusion_query_resource", {"resource": "invoices", "q": "InvoiceDate >= '2026-01-01'", "limit": 1, "totalResults": True})
+        yield result(text="Done.")
+    db = await Database(tmp_path / "f.db").open()
+    runner = LiveRunner(settings, db, yes, lambda opts: FakeSDK(opts, script), tick_s=0.02)
+    current["r"] = runner
+    await runner.run(7, "invoices in January")
+    await db.close()
+    assert log["typed_pair"].behavior == "deny" and "send only ONE of them" in log["typed_pair"].message and "InvoiceDate" in log["typed_pair"].message
+    assert log["generic_pair"].behavior == "deny" and "ONE condition per attribute" in log["generic_pair"].message
+    assert log["typed_one"].behavior == "allow" and log["generic_one"].behavior == "allow"

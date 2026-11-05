@@ -26,7 +26,7 @@ def test_every_scenario_names_the_problem_it_guards_and_ids_are_unique():
     sc = scenarios()
     assert len({s.sid for s in sc}) == len(sc) >= 18 and [x.sid for x in sc] == [f"S{i}" for i in range(1, len(sc) + 1)]
     assert all(s.guards and s.title and s.steps for s in sc)
-    assert sorted(s.sid for s in sc if s.soft) == ["S10", "S13", "S14", "S15", "S16", "S17", "S18", "S4"]         # only the pod-dependent ones are soft
+    assert sorted(s.sid for s in sc if s.soft) == ["S10", "S13", "S14", "S15", "S16", "S17", "S18", "S19", "S4"]         # only the pod-dependent ones are soft
 
 
 def test_markdown_in_a_phone_answer_is_flagged():
@@ -330,3 +330,21 @@ def test_s18_notices_an_attempt_to_look_people_up_with_or(settings):
     assert ok["asked for one person per call, not an or query"].status == PASS
     bad = run(['{"resource": "workers", "q": "PersonNumber = \'1\' or PersonNumber = \'2\'"}'])
     assert bad["asked for one person per call, not an or query"].status == WARN
+
+
+def test_s19_fails_when_the_bot_gives_up_and_passes_when_it_reads_absences_and_answers(settings):
+    """Replay of the failure: after a heavy invoice answer the September sick-leave question ended with 'I could not get a reliable answer'."""
+    def run(answer, calls, plans=1, data_calls=2, status="ok"):
+        first = out("Here are 25 invoices. Total 25 shown.")
+        second = out(answer, plans=["p"] * plans, data_calls=data_calls, status=status,
+                     tool_calls=[{"name": "query_resource", "input": {"resource": "absences", "q": q}} for q in calls])
+        return {c.name: c for c in by_id("S19").check([first, second], settings)}
+    good = run("2 people took sick leave in September 2026.", ["absenceType LIKE 'Sick%';startDate >= 2026-09-01"])
+    assert good["read the absences"].status == PASS and good["gave an answer, not a refusal to answer"].status == PASS
+    assert good["two plans or fewer for the second question"].status == PASS
+    gave_up = run("I could not get a reliable answer yet. The September 2026 filter was not applied.", ["startDate >= 2026-09-01;startDate <= 2026-09-30"])
+    assert gave_up["gave an answer, not a refusal to answer"].status == FAIL
+    assert run("I still can't answer this.", ["x"])["gave an answer, not a refusal to answer"].status == FAIL
+    assert run("2 people.", [], data_calls=0)["read the absences"].status == FAIL                   # answered without reading anything
+    assert run("2 people.", ["a"], plans=3)["two plans or fewer for the second question"].status == WARN
+    assert run("", ["a"], status="timeout")["second question answered"].status == FAIL

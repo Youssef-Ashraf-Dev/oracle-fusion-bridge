@@ -88,3 +88,53 @@ def test_an_or_lookup_on_workers_is_recognised_but_other_reads_are_not():
     assert not P.workers_or_lookup(pre + "query_resource", {"resource": "workers"})   # no filter at all
     assert not P.workers_or_lookup(pre + "query_resource", {"resource": "workers", "q": None})
     assert "ONE person per call" in P.WORKERS_OR_REASON and "FIRST person" in P.WORKERS_OR_REASON
+
+
+def test_a_filter_naming_the_same_attribute_twice_is_recognised_on_both_families_but_valid_filters_are_not():
+    """Measured on absences (16 versus 4,115 for the same two conditions reversed) and on invoices (InvoiceDate >= A;InvoiceDate <= B gave the total of <= B)."""
+    hr, fin = P.PREFIX + "query_resource", P.PREFIX + "fusion_query_resource"
+    twice = lambda q, res="absences", tool=hr: P.repeated_filter_attribute(tool, {"resource": res, "q": q})
+    assert twice("startDate >= 2026-09-01;startDate <= 2026-09-30") == "startDate"
+    assert twice("startDate >= 1900-01-01;absenceType LIKE 'Sick%';StartDate <= 2026-09-30") == "StartDate"      # not adjacent, any capitals
+    assert twice("absenceType = 'Sick Leave';absenceType = 'Annual Leave'") == "absenceType"
+    assert twice("PersonNumber = 1;PersonNumber = 2", res="workers") == "PersonNumber"                          # every HR resource, not only absences
+    assert twice("InvoiceDate >= '2026-01-01';InvoiceDate <= '2026-01-31'", res="invoices", tool=fin) == "InvoiceDate"
+    assert twice("InvoiceDate <= 2026-01-31;InvoiceDate >= 2026-01-01", res="invoices", tool=fin) == "InvoiceDate"
+    assert twice("absenceType LIKE 'Sick%';startDate >= 2026-09-01") is None                                    # different attributes combine
+    assert twice("InvoiceDate >= '2026-01-01';ValidationStatus = 'X'", res="invoices", tool=fin) is None
+    assert twice("startDate >= 2026-09-01") is None and twice(None) is None and twice("") is None
+    assert twice("absenceType LIKE 'startDate >= x;startDate <= y'") is None                                    # text inside quotes
+    assert P.repeated_filter_attribute(P.PREFIX + "search_suppliers", {"q": "a = 1;a = 2"}) is None            # a tool outside the measured families
+    assert P.repeated_filter_attribute(hr, {"resource": "absences"}) is None
+    why = P.repeated_filter_reason("startDate")
+    assert "ONE condition per attribute" in why and "startDate >= FROM" in why and "ask for the total (limit 1) twice" in why
+    assert "measured on absences and on invoices" in why and "THE DAY AFTER TO" in why and "send only ONE of them" not in why
+
+
+def test_a_typed_search_given_both_date_from_and_date_to_is_recognised_because_it_builds_a_pair_on_one_attribute():
+    """search_invoices appends InvoiceDate >= date_from and then InvoiceDate <= date_to: with the pod's last-one-wins rule the lower bound is lost."""
+    typed = lambda tool, **kw: P.repeated_filter_attribute(P.PREFIX + tool, kw)
+    assert typed("search_invoices", date_from="2026-01-01", date_to="2026-01-31") == "InvoiceDate"
+    assert typed("search_payments", date_from="a", date_to="b") == "PaymentDate"
+    assert typed("search_ar_invoices", date_from="a", date_to="b") == "CreationDate"
+    assert typed("search_receipts", date_from="a", date_to="b") == "ReceiptDate"
+    assert typed("search_expense_reports", date_from="a", date_to="b") == "ReportSubmitDate"
+    assert typed("search_invoices", date_from="2026-01-01", supplier="google") is None                           # one bound, or another attribute: fine
+    assert typed("search_invoices", date_to="2026-01-31") is None and typed("search_invoices") is None
+    assert typed("search_invoices", date_to="2026-01-31", q="InvoiceDate >= '2026-01-01'") == "InvoiceDate"     # q and a date parameter overlap
+    assert typed("search_invoices", date_from="2026-01-01", q="Supplier LIKE 'G%'") is None
+    assert typed("search_invoices", date_from="", date_to=None) is None
+    assert "send only ONE of them" in P.repeated_filter_reason("InvoiceDate", typed_search=True)
+
+
+def test_the_word_and_in_an_absences_filter_is_recognised_because_the_pod_answers_400():
+    """The V4 run sent 'absenceType LIKE ... and startDate >= 2025-01-01' three times and spent its calls on 400 errors."""
+    pre = P.PREFIX + "query_resource"
+    has = lambda q, res="absences", tool=pre: P.absences_and_keyword(tool, {"resource": res, "q": q})
+    assert has("absenceType LIKE 'Sick%' and startDate >= 2025-01-01") and has("a = 1 AND b = 2") and has("(a >= 1) and (a <= 2)") and has("a = 1\nand b = 2")
+    assert not has("absenceType LIKE 'Sick%';startDate >= 2025-01-01") and not has("startDate >= 2025-01-01") and not has(None) and not has("")
+    assert not has("absenceType = 'Sick and Annual'")                                           # inside quotes it is just text
+    assert not has("a = 1 and b = 2", res="workers") and not has("a = 1 and b = 2", tool=P.PREFIX + "fusion_query_resource")
+    why = P.ABSENCES_AND_REASON
+    assert "rejects the word 'and'" in why and "DIFFERENT attributes with ';'" in why and "THE DAY AFTER TO" in why and "subtract the second total" in why
+    assert "Do not report a total from a filter that was refused or ignored" in why

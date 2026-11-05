@@ -300,6 +300,9 @@ def _all() -> list[Scenario]:
                  _broader_follow_up, "the 10 most recent rows were used to answer 'who took sick leave in September' as if complete", soft=True),
         Scenario("S18", "People questions show names by default", ("Who took the last 3 absences?",), _people_show_names,
                  "listed people by number only and needed a follow-up, where a refusal could happen", soft=True),
+        Scenario("S19", "A new topic after a heavy answer: sick leave last September",
+                 ("List 60 payables invoices with number and amount.", "Who took sick leave in September 2026?"),
+                 _heavy_then_new_topic, "a date range written as two startDate conditions came back unfiltered, and the bot gave up", soft=True),
         Scenario("S9", "Names after person numbers", ("Who took the last 3 absences? Give person numbers only.", "Now give me their names."),
                  _names_follow_up, "the bot refused names it is allowed to show after a profile tool was refused earlier"),
         Scenario("S8", "Arabic question", ("كم عدد فواتير الموردين في هذا النظام؟ أعطني العدد الإجمالي فقط.",), _arabic,
@@ -321,6 +324,23 @@ def _broader_follow_up(os, s):
         CheckResult("did not pass a sample off as the whole answer", PASS if (reread or scoped) else FAIL,
                     "read the data again" if reread else ("said it covers only the rows already fetched" if scoped
                                                            else "answered a broader question from earlier rows without saying so"))]
+
+
+_GAVE_UP = re.compile(r"(?i)(could not get a reliable|still can'?t answer|cannot answer|unable to answer|filter (was|is) (being )?ignored|stopping here)")
+
+
+def _heavy_then_new_topic(os, s):
+    """The pod keeps only the last of several conditions on one attribute, so a window written as two startDate conditions is unfiltered.
+    The bridge now refuses that filter; the bot must recover and answer, not give up."""
+    first, second = os
+    read_absences = second.res.data_calls >= 1 and any("absences" in str(t.get("input", "")).lower() for t in second.res.tool_calls)
+    gave_up = bool(_GAVE_UP.search(second.res.answer))
+    return common(first, s) + [
+        CheckResult("second question answered", PASS if second.res.status == "ok" and second.res.answer.strip() else FAIL, second.res.status),
+        CheckResult("read the absences", PASS if read_absences else FAIL, "" if read_absences else "no data call on absences"),
+        CheckResult("gave an answer, not a refusal to answer", FAIL if gave_up else PASS,
+                    "the answer says it could not answer" if gave_up else ""),
+        CheckResult("two plans or fewer for the second question", WARN if len(second.plans) > 2 else PASS, f"{len(second.plans)} plan(s)")]
 
 
 def _people_show_names(os, s):

@@ -98,6 +98,7 @@ class Verdict:
     note: str = ""
     cost_usd: float = 0.0
     seconds: float = 0.0
+    answer: str = ""                                     # kept in memory only; never written to the report
 
 
 async def verify_case(case: Case, call: Call, ask: Ask) -> Verdict:
@@ -106,7 +107,7 @@ async def verify_case(case: Case, call: Call, ask: Ask) -> Verdict:
     except Exception as e:                                           # the truth itself could not be read: say so, do not guess
         return Verdict(case.vid, WARN, note=f"could not get the true number from Fusion: {str(e)[:160]}")
     asked = await ask(case.question)
-    v = Verdict(case.vid, FAIL, expected_before=before, cost_usd=asked.cost_usd, seconds=asked.seconds)
+    v = Verdict(case.vid, FAIL, expected_before=before, cost_usd=asked.cost_usd, seconds=asked.seconds, answer=asked.answer)
     if asked.status != "ok" or not asked.answer.strip():
         v.note = f"the bot gave no answer (status {asked.status})"
         return v
@@ -148,13 +149,37 @@ def _hcm_total(resource: str, q: str) -> Callable[[Call], Awaitable[int]]:
     return truth
 
 
+def _fscm_difference(resource: str, q_from: str, q_to: str) -> Callable[[Call], Awaitable[int]]:
+    """The same idea on the finance side: total(q_from) minus total(q_to), each with ONE condition on the date, because the pod keeps only the
+    last of two conditions on one attribute (measured on invoices: InvoiceDate >= A;InvoiceDate <= B returned the total of <= B alone)."""
+    async def truth(call: Call) -> int:
+        a = find_total(await call("fusion_query_resource", {"resource": resource, "q": q_from, "limit": 1, "totalResults": True}))
+        b = find_total(await call("fusion_query_resource", {"resource": resource, "q": q_to, "limit": 1, "totalResults": True}))
+        return a - b
+    return truth
+
+
+def _hcm_difference(resource: str, q_from: str, q_to: str) -> Callable[[Call], Awaitable[int]]:
+    """A count over a window as the difference of two totals: total(q_from) minus total(q_to). The pod ignores all but the last of several
+    conditions on one attribute, so a window cannot be asked for in one filter; two filters with ONE date condition each can."""
+    async def truth(call: Call) -> int:
+        a = find_total(await call("query_resource", {"resource": resource, "q": q_from, "limit": 1, "total_results": True}))
+        b = find_total(await call("query_resource", {"resource": resource, "q": q_to, "limit": 1, "total_results": True}))
+        return a - b
+    return truth
+
+
 def cases() -> list[Case]:
     return [
         Case("V1", "How many payables invoices are there in total? Give me just the number.", "Payables invoices, total",
              _fscm_total("invoices")),
         Case("V2", "How many ledgers are there on this pod? Give me just the number.", "Ledgers, total", _fscm_total("ledgersLOV")),
-        Case("V3", "How many sick leave absences started in 2025? Give me just the number.", "Sick leave absences starting in 2025",
-             _hcm_total("absences", "startDate >= 2025-01-01;startDate <= 2025-12-31;absenceType LIKE 'Sick%'")),
+        Case("V3", "How many absences started on or after 1 September 2026? Give me just the number.", "Absences starting on or after 2026-09-01",
+             _hcm_total("absences", "startDate >= 2026-09-01")),               # ONE condition: the pod ignores all but the last of several
+        Case("V4", "How many sick leave absences started in 2025? Give me just the number.", "Sick leave absences starting in 2025",
+             _hcm_difference("absences", "absenceType LIKE 'Sick%';startDate >= 2025-01-01", "absenceType LIKE 'Sick%';startDate >= 2026-01-01")),
+        Case("V5", "How many payables invoices are dated in January 2026? Give me just the number.", "Invoices dated in January 2026",
+             _fscm_difference("invoices", "InvoiceDate >= '2026-01-01'", "InvoiceDate >= '2026-02-01'")),
     ]
 
 

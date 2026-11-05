@@ -36,6 +36,9 @@ async def main() -> int:
     ap.add_argument("--only", default="")
     ap.add_argument("--repeat", type=int, default=1)
     ap.add_argument("--list", action="store_true")
+    ap.add_argument("--show-answers", action="store_true",
+                    help="print the bot's answer when a case fails, to read what it actually said. The cases are counts, so no names; "
+                         "do not use this on a case that asks about people")
     a = ap.parse_args()
     chosen = [c for c in cases() if not a.only or c.vid in {x.strip().upper() for x in a.only.split(",")}]
     if a.list:
@@ -69,6 +72,8 @@ async def main() -> int:
                         results.append((c, v))
                         print(f"  {v.status:4} {c.vid} {c.label}  Fusion {v.expected_before} / bot {v.found[:4]}  (${v.cost_usd:.3f}, {v.seconds:.0f}s)"
                               + (f"  <- {v.note}" if v.note else ""))
+                        if a.show_answers and v.status == "FAIL" and v.answer:
+                            print("       the bot said: " + v.answer.strip().replace("\n", " | ")[:700])
     finally:
         await db.close()
     report = ROOT / "data" / "verify" / "report.md"

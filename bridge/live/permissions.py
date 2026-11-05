@@ -7,6 +7,7 @@ not named here, including any tool a future bundle version adds, is denied.
 from __future__ import annotations
 
 import re
+from typing import Optional
 
 from dataclasses import dataclass
 
@@ -106,6 +107,64 @@ def workers_or_lookup(tool_name: str, tool_input: dict) -> bool:
         return False
     q = re.sub(r"'[^']*'", "''", str(tool_input.get("q") or ""))
     return bool(_OR_WORD.search(q))
+
+
+_CLAUSE_ATTRIBUTE = re.compile(r"^\s*([A-Za-z_][\w.]*)\s*(?:>=|<=|<>|!=|=|<|>|\b(?:LIKE|IN)\b)", re.I)
+
+
+# The typed searches that turn date_from and date_to into two conditions on ONE attribute (read from the MCP's client code), and that attribute.
+DATE_RANGE_SEARCHES = {"search_invoices": "InvoiceDate", "search_payments": "PaymentDate", "search_ar_invoices": "CreationDate",
+                       "search_receipts": "ReceiptDate", "search_expense_reports": "ReportSubmitDate"}
+GENERIC_FILTER_READERS = {"query_resource", "fusion_query_resource"}
+
+
+def repeated_filter_attribute(tool_name: str, tool_input: dict) -> Optional[str]:
+    """The attribute that a read names twice in its filter, or None. On this pod several conditions on the SAME attribute collapse silently to the
+    last one (measured on absences: startDate >= 2026-01-01;startDate >= 2026-09-01 returned 16 rows, the same two reversed 4,115; and on invoices:
+    InvoiceDate >= X;InvoiceDate <= Y returned the total of <= Y alone). A typed search with both date_from and date_to builds exactly such a pair.
+    Text inside quotes is ignored."""
+    name = bare(tool_name)
+    if name not in GENERIC_FILTER_READERS and name not in DATE_RANGE_SEARCHES:
+        return None
+    named: list[str] = []
+    for clause in re.sub(r"'[^']*'", "''", str(tool_input.get("q") or "")).split(";"):
+        m = _CLAUSE_ATTRIBUTE.match(clause)
+        if m:
+            named.append(m.group(1))
+    if name in DATE_RANGE_SEARCHES:
+        named += [DATE_RANGE_SEARCHES[name]] * (bool(tool_input.get("date_from")) + bool(tool_input.get("date_to")))
+    seen: set[str] = set()
+    for attribute in named:
+        if attribute.lower() in seen:
+            return attribute
+        seen.add(attribute.lower())
+    return None
+
+
+_AND_WORD = re.compile(r"(?i)\sand\s")
+ABSENCES_AND_REASON = ("the absences resource on this pod rejects the word 'and' in a filter with a 400. Join conditions on DIFFERENT attributes with ';' "
+                       "(absenceType LIKE 'Sick%';startDate >= 2025-01-01) and never repeat an attribute: the pod keeps only the last condition on the "
+                       "same attribute, with no error. For a window on one date, send the lower bound (startDate >= FROM) with the other conditions and "
+                       "drop the rows past the upper bound yourself. To COUNT a window, make two calls with limit 1 and total_results true, "
+                       "'<other conditions>;startDate >= FROM' and '<other conditions>;startDate >= THE DAY AFTER TO', and subtract the second total "
+                       "from the first. Do not report a total from a filter that was refused or ignored.")
+
+
+def absences_and_keyword(tool_name: str, tool_input: dict) -> bool:
+    """True for a generic read on absences whose filter joins conditions with the word 'and' (the pod answers 400). Quoted text does not count."""
+    if bare(tool_name) != "query_resource" or str(tool_input.get("resource", "")).strip().lower() != "absences":
+        return False
+    return bool(_AND_WORD.search(re.sub(r"'[^']*'", "''", str(tool_input.get("q") or ""))))
+
+
+def repeated_filter_reason(attribute: str, typed_search: bool = False) -> str:
+    text = (f"on this pod a filter that names the same attribute twice ({attribute} appears twice) silently keeps only the LAST condition on it, with "
+            f"no error (measured on absences and on invoices), so a range written as two {attribute} conditions loses its other bound. ")
+    if typed_search:
+        text += "A typed search turns date_from and date_to into exactly such a pair, so send only ONE of them. "
+    return text + (f"Send ONE condition per attribute: the lower bound ({attribute} >= FROM) with conditions on other attributes, read the rows and "
+                   f"drop those past the upper bound yourself. To count a window, ask for the total (limit 1) twice and subtract: "
+                   f"total({attribute} >= FROM) minus total({attribute} >= THE DAY AFTER TO). Do not report a total from a filter that was refused or ignored.")
 
 
 def classify(tool_name: str, allow_sensitive: bool = False) -> Decision:
