@@ -40,6 +40,47 @@ Measured from the pilot itself, over at least two weeks.
 | Cost | cost per user per week is known and inside the budget |
 | Decision | the real question mix decides what comes next: more users, production hardening, or which charts and reports to build first |
 
+## Accepted record: v0.1.0, a code checkpoint
+
+Written on 2026-11-08, after the final measurements below, for the commit tagged `v0.1.0`. It says what is met and what is not.
+**This version is a code checkpoint, not yet a pilot start:** the automatic checks pass, but entry checks 5 to 8 are still open. The
+descriptive tag `pilot-entry` is created when the whole entry gate is met, and it may then point at a later commit.
+
+| # | Entry check | Status | Evidence |
+| --- | --- | --- | --- |
+| 1 | Offline tests on Windows | **Met** | 421 passed, 5 skipped; with the real MCP and engine (`run_all`): 426 passed, 0 skipped |
+| 2 | Safety (S5, S6, S11, S12), 5 runs each | **Met** | 20 of 20 |
+| 3 | Core behaviour (S1, S2, S3, S7, S8, S9, S16, S18), 3 runs each | **Met** | 23 of 24 clean, 1 warning (S7: 3 plans in one run); every scenario passed at least 2 of 3 |
+| 4 | Correctness smoke test | **Met** | V1 to V5 each equal Fusion's own count: 11,329 invoices, 1 ledger, 16 absences from 2026-09-01, 4,520 sick leave in 2025, 594 invoices in January 2026. V4 and V5 were also 5 of 5 in separate five-run repeats |
+| 5 | Pilot feedback by hand | Not started | needs the invitation and the chat group |
+| 6 | Repository | **Partly met** | History scan: 14 findings, all the fake keys of the preflight check, none for the revoked token or for current secrets. Fresh-clone check PASS. Packages pinned.
+| 7 | Deployment | Not started | Day 3 |
+| 8 | Approvals | **Partly met** | The data owner (the MCP's creator and the project manager) approved the dev pod's data, including worker names and absence types, going to the model and to Telegram; the owner notes the date and the form here. Pilot users have not been informed yet |
+
+Other measurements on the final code: the full `run_all`, 19 scenarios once each, 19 of 19 with no warnings. Cost per question $0.000 to
+$0.026 (limit $0.05). Scenario times 10 to 62 seconds. CI run #8: Windows 1m35s, Linux 47s.
+
+**Telegram.** Checked by hand on 2026-11-08: a question, a plan, an approval and an answer with names. The full walk-through (C0 to C9) was
+done earlier, on a previous version of the code. **Not repeated: the live check with an unregistered account (C7).** The requirement
+(FR-01) is covered by two automated tests: `test_unregistered_user_gets_no_reply_at_all`, which uses the real Telegram objects, and
+`test_unregistered_user_gets_nothing_and_is_logged`.
+
+**Known limits**
+- The filter guard covers HR reads, finance reads and the five typed searches that take `date_from` and `date_to`. The same-attribute
+  rule was measured on absences and on invoices and is assumed elsewhere.
+- "The latest N" skips planned leave unless the question asks about it.
+- Multi-step questions sometimes need 3 or 4 approvals.
+- The verifier checks single numbers only; lists have no independent check.
+- The recipes use 3,578 of 3,600 characters: the next verified fact needs a conscious raise of the ceiling.
+- Everything was measured on the dev pod. Wherever the bot runs needs outbound access to `api.telegram.org` on port 443.
+
+**Open decisions of the owner:** repository visibility (public, decided 2026-11-08), and the live check with a second Telegram account
+(deferred).
+
+**To reproduce** (in the project folder, virtual environment active): `python -m pytest -q`; `RUN_MCP_TESTS=1 python -m pytest -q`;
+`python devtools/run_all.py --only S5,S6,S11,S12 --repeat 5 --skip-tests`; `python devtools/run_all.py --only S1,S2,S3,S7,S8,S9,S16,S18 --repeat 3 --skip-tests`;
+`python devtools/verify_answers.py`; `python devtools/secret_scan.py --history`; `python devtools/fresh_clone_check.py --run`.
+
 ## Deferred, on purpose
 
 Not built for the first round, to keep the first deployment simple. Revisit after the first week if the manual routine proves too weak
