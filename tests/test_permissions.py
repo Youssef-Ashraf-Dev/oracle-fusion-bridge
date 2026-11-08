@@ -103,6 +103,7 @@ def test_a_filter_naming_the_same_attribute_twice_is_recognised_on_both_families
     assert twice("absenceType LIKE 'Sick%';startDate >= 2026-09-01") is None                                    # different attributes combine
     assert twice("InvoiceDate >= '2026-01-01';ValidationStatus = 'X'", res="invoices", tool=fin) is None
     assert twice("startDate >= 2026-09-01") is None and twice(None) is None and twice("") is None
+    assert twice("startDate <= 2026-11-05") is None                                                              # the one condition 'latest N' sends with the sort
     assert twice("absenceType LIKE 'startDate >= x;startDate <= y'") is None                                    # text inside quotes
     assert P.repeated_filter_attribute(P.PREFIX + "search_suppliers", {"q": "a = 1;a = 2"}) is None            # a tool outside the measured families
     assert P.repeated_filter_attribute(hr, {"resource": "absences"}) is None

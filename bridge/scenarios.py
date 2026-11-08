@@ -159,9 +159,18 @@ def _count(os, s):
     return common(o, s) + [reached_data(o, 1, 8), has_digit(o)]
 
 
+def _left_out_planned_leave(o) -> CheckResult:
+    """'The last N absences': the pod holds absences dated up to 2026-12-31, so a server-side sort returns planned leave first unless the
+    read carries startDate <= today. Soft, because a question about planned leave is legitimate."""
+    ok = any(str(t.get("name", "")).endswith("query_resource") and "absences" in str(t.get("input", "")).lower()
+             and re.search(r"(?i)startdate\s*<=", str(t.get("input", ""))) for t in o.res.tool_calls)
+    return CheckResult("left planned (future-dated) leave out", PASS if ok else WARN,
+                       "" if ok else "no startDate <= condition on absences: planned leave may be in the answer")
+
+
 def _hr_list(os, s):
     o = os[0]
-    return common(o, s) + [reached_data(o), has_digit(o)]
+    return common(o, s) + [reached_data(o), has_digit(o), _left_out_planned_leave(o)]
 
 
 def _nested_hr(os, s):
@@ -353,7 +362,8 @@ def _people_show_names(os, s):
                                        "" if asked_workers else "listed people without asking the workers resource for their names"),
                            CheckResult("asked for one person per call, not an or query", WARN if tried_or else PASS,
                                        "tried an or query on workers (the bridge refuses it: it returns only the first person)" if tried_or else ""),
-                           CheckResult("did not refuse worker names", FAIL if refused else PASS)]
+                           CheckResult("did not refuse worker names", FAIL if refused else PASS),
+                           _left_out_planned_leave(o)]
 
 
 def scenarios() -> list[Scenario]:

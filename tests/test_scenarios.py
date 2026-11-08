@@ -348,3 +348,19 @@ def test_s19_fails_when_the_bot_gives_up_and_passes_when_it_reads_absences_and_a
     assert run("2 people.", [], data_calls=0)["read the absences"].status == FAIL                   # answered without reading anything
     assert run("2 people.", ["a"], plans=3)["two plans or fewer for the second question"].status == WARN
     assert run("", ["a"], status="timeout")["second question answered"].status == FAIL
+
+
+def test_the_last_n_absences_scenarios_warn_when_planned_leave_is_not_left_out(settings):
+    """The pod holds absences dated up to 2026-12-31, so a server-side sort returns planned leave first unless the read carries startDate <= today."""
+    def result(sid, *calls):
+        o = out("3 people: 123, 456, 789", tool_calls=[{"name": "query_resource", "input": c} for c in calls], data_calls=len(calls))
+        return {c.name: c for c in by_id(sid).check([o], settings)}["left planned (future-dated) leave out"]
+    good = '{"resource": "absences", "q": "startDate <= 2026-11-05", "order_by": "startDate:desc", "limit": 3}'
+    bad = '{"resource": "absences", "order_by": "startDate:desc", "limit": 3}'
+    for sid in ("S3", "S18"):
+        assert result(sid, good).status == PASS
+        assert result(sid, "{}", good).status == PASS                                                  # any one of the calls is enough
+        warn = result(sid, bad)
+        assert warn.status == WARN and "planned leave may be in the answer" in warn.detail
+        assert result(sid, '{"resource": "workers", "q": "startDate <= x"}').status == WARN              # the condition has to be on absences
+        assert result(sid).status == WARN

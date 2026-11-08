@@ -351,7 +351,7 @@ class LiveRunner:
                         if isinstance(b, TextBlock):
                             texts.append(b.text)
                         elif isinstance(b, ToolUseBlock):
-                            out.tool_calls.append({"name": P.bare(b.name), "input": _short(b.input, 200)})
+                            out.tool_calls.append({"name": P.bare(b.name), "input": _short(b.input, 400)})
                             activity = activity_label(b.name)
                 elif isinstance(m, UserMessage) and isinstance(m.content, list):
                     for b in m.content:
