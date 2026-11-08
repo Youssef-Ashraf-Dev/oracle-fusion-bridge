@@ -19,7 +19,7 @@ Telegram  ->  bridge (this repo)  ->  Claude engine (Haiku, your API key)  ->  t
 | `skill/` | The Fusion planner skill the colleague uses in chat, and `recipes.md` (verified notes about this pod) | yes |
 | `scripts/` | Operator tools, useful on the running server | yes |
 | `devtools/` | Developer and acceptance tools | no |
-| `tests/`, `docs/` | The test suite and the acceptance checklist | no |
+| `tests/`, `docs/` | The test suite, the acceptance checklist and the CI guide | no |
 
 ## Set up (Windows: PowerShell or Git Bash)
 
@@ -61,7 +61,8 @@ In Telegram: send a question as plain text, or use `/ask`, `/new` (fresh convers
 
 `pytest` runs the suite offline. `RUN_MCP_TESTS=1 pytest` also starts the real MCP bundle and the real engine (needs uv and,
 the first time, the network). `docs/ACCEPTANCE.md` is the sign-off checklist: the automatic checks, a Telegram walk-through,
-and how to read the logs.
+and how to read the logs. `docs/CI.md` explains the GitHub Actions workflow: what it runs, how to read a run, what it costs and the rules for
+changing it.
 
 ## Windows and Linux
 
