@@ -521,3 +521,9 @@ async def test_a_finance_date_pair_is_refused_inside_a_run_whether_typed_or_gene
     assert log["typed_pair"].behavior == "deny" and "send only ONE of them" in log["typed_pair"].message and "InvoiceDate" in log["typed_pair"].message
     assert log["generic_pair"].behavior == "deny" and "ONE condition per attribute" in log["generic_pair"].message
     assert log["typed_one"].behavior == "allow" and log["generic_one"].behavior == "allow"
+
+
+def test_the_prompt_tells_the_model_how_to_spell_a_sort_because_one_wrong_spelling_made_it_give_up_sorting():
+    """The pod accepts order_by startDate:desc and rejects 'startDate desc', '-startDate' and 'StartDate:desc' (query_probe, 2026-11-05)."""
+    text = " ".join(BRIDGE_RULES.split())
+    assert "spelled attribute:desc (order_by startDate:desc)" in text and "use it once" in text

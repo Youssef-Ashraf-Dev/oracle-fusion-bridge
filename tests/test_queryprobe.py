@@ -118,8 +118,9 @@ def test_the_recipes_teach_one_condition_per_attribute_and_no_longer_teach_the_s
     from pathlib import Path
     text = " ".join((Path(__file__).resolve().parents[1] / "skill" / "recipes.md").read_text(encoding="utf-8").split())   # line breaks do not matter
     assert "ONE condition per attribute" in text and "collapse silently to the last one" in text and "minus total(X >= the day after TO)" in text
-    assert "Filters, HR and finance" in text and "a typed search given both date_from and date_to" in text and "on invoices, 2026-11-05" in text
+    assert "Filters, HR and finance" in text and "a typed search given both date_from and date_to" in text and "invoices, 2026-11-05" in text
     assert "join conditions with a semicolon" not in text and "pod keeps only the LAST" not in text
+    assert "order_by startDate:desc" in text and "order_by is rejected" not in text                # measured: startDate:desc sorts, the rest give a 400
     for good in ("personAbsenceEntryId", "personNumber", "absenceType", "startDate", "endDate", "absenceDispStatus"):
         assert good in text                                                                # the six field names the probe accepted
     assert "AbsenceId, PersonNumber and StartDate give a 400" in text and "one bad name fails the whole call" in text

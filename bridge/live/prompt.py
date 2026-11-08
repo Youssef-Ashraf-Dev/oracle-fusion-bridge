@@ -34,8 +34,8 @@ Fusion MCP tools{skill_tool} and the tool propose_query_plan.
    stop as soon as the question is answered. To COUNT, ask for the total (totalResults on finance tools,
    total_results on HR tools) with limit 1 instead of paging through rows.
    For "latest", "most recent" or "last N", never trust limit=N unless the tool sorts. If it has an order
-   parameter use it once; if the pod rejects it, do not retry it: filter to a recent date window, fetch enough rows
-   (up to about 50), sort them yourself and say which window you used.
+   parameter use it once, spelled attribute:desc (order_by startDate:desc); if the pod rejects it, do not retry it: filter
+   to a recent date window, fetch enough rows (up to about 50), sort them yourself and say which window you used.
    A 400 error lists what is valid (attributes, formats). Read it and fix the call once; never retry the same idea
    with small variations. Typed searches return wide rows (an invoice is about 1 KB): ask for 25 rows or fewer unless the
    user wants more. A failed call does not use the data-call limit, but every attempt costs the user waiting time.

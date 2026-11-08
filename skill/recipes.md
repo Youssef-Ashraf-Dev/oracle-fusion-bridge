@@ -13,18 +13,19 @@
 - Filters, HR and finance: conditions on different attributes combine (join with ";"), but two on the SAME attribute collapse silently to the
   last one, and so does a typed search given both date_from and date_to; the bridge refuses these. Send ONE condition per attribute: the lower
   bound plus other attributes, then drop rows past the upper bound yourself. To COUNT a window, make two calls (limit 1, totals) and subtract
-  total(X >= FROM) minus total(X >= the day after TO). (Measured with devtools/query_probe.py on absences, 2026-11-04, and on invoices,
+  total(X >= FROM) minus total(X >= the day after TO). (Measured with devtools/query_probe.py on absences, 2026-11-04, and invoices,
   2026-11-05: InvoiceDate >= A;InvoiceDate <= B gave the total of <= B alone.)
-- HR absences: order_by is rejected: read the rows and sort them yourself. Dates are bare. Fields that work: personAbsenceEntryId, personNumber,
-  absenceType, startDate, endDate, absenceDispStatus; AbsenceId, PersonNumber and StartDate give a 400, and one bad name fails the whole call.
-  The word and gives a 400. (Seen with devtools/field_probe.py on 2026-11-05 and query_probe.py on 2026-11-04.)
+- HR absences: sort on the server with order_by startDate:desc (other spellings give a 400): "the latest N" is ONE call with limit N.
+  Dates are bare. Fields that work: personAbsenceEntryId, personNumber, absenceType, startDate, endDate, absenceDispStatus; AbsenceId,
+  PersonNumber and StartDate give a 400, and one bad name fails the whole call. The word and gives a 400. (Seen with devtools/field_probe.py
+  and query_probe.py, 2026-11-04/05.)
 - The HR resource emps returns 403 for this account: do not use it. Worker names come from query_resource on workers (fields
   PersonNumber,DisplayName). (Seen in a run for emps; names from workers worked in scenario S9.)
 - Ledgers: the typed tool list_ledgers fails with 400 on this pod (the fields it hard-codes are not all valid). Do not use it. Describe
   ledgersLOV (it is small), then query it with fusion_query_resource using only the attribute names the describe shows. (Seen in five runs;
   the way around it works: scenario S16 passed with it.)
-- Typed searches return wide rows (about 1 KB per invoice): limit 50 gave 61,152 characters and the engine refused it as too large. Ask for
+- Typed searches return wide rows (about 1 KB per invoice): limit 50 gave 61,152 characters and the engine refused it. Ask for
   25 rows or fewer, or use fusion_query_resource with fields. (Seen in scenario S7: 61,152 characters were refused.)
 - Looking up names: a query on workers that joins people with or returns ONLY THE FIRST person (10 numbers in one query gave 1, batches of 5
   gave 2, one per call gave 10 of 10). Ask for one person per call (q PersonNumber = '<number>', fields PersonNumber,DisplayName); the bridge
-  refuses an or lookup on workers. (Checked with devtools/lookup_probe.py on this pod, twice with the same result.)
+  refuses an or lookup on workers. (Checked twice with devtools/lookup_probe.py on this pod.)
